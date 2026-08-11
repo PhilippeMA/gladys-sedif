@@ -51,6 +51,12 @@ const READINGS_PER_BATCH = 50;
 // degraded so the user sees it without opening the logs.
 const STALE_AFTER_DAYS = 4;
 
+// The manifest grants an action 120 s of ack — the maximum Gladys allows — and
+// past that the UI just says "the action failed, check that the integration is
+// started", which tells the user nothing. So an action gives up FIRST, with
+// enough margin to send back a real explanation.
+const ACTION_DEADLINE_MS = 100_000;
+
 // Last successful poll, used by the transport badge. Not persisted: after a
 // restart the badge stays neutral until the first poll says otherwise.
 let lastSuccessfulReadingDate = null;
@@ -141,7 +147,10 @@ export const waterMeter = {
           fr: "Renseignez d'abord l'adresse e-mail et le mot de passe.",
         };
       }
-      const { readings, latest } = await fetchHistory(config, deps);
+      const { readings, latest } = await fetchHistory(config, {
+        deadlineMs: ACTION_DEADLINE_MS,
+        ...deps,
+      });
       if (!latest) {
         return {
           en: `Signed in, ${readings.length} days exported, but no measured reading yet.`,
@@ -157,7 +166,10 @@ export const waterMeter = {
 
     async resync_history(gladys, { config, deps = {} }) {
       await clearCursor(contractKey(config));
-      const published = await importHistory(gladys, config, deps);
+      const published = await importHistory(gladys, config, {
+        deadlineMs: ACTION_DEADLINE_MS,
+        ...deps,
+      });
       return {
         en: `History re-imported: ${published} days published.`,
         fr: `Historique réimporté : ${published} jours publiés.`,
@@ -196,9 +208,11 @@ async function importHistory(gladys, config, deps = {}) {
     history = await fetchHistory(config, deps);
     lastFailureMessage = null;
   } catch (err) {
-    // Remember the reason so the device badge can carry it, then let the SDK
-    // report the failed poll.
-    lastFailureMessage = err.message;
+    // "Another session is running" is not a failure of the meter, it is the
+    // concurrency guard doing its job: it must not paint the badge orange.
+    if (err.code !== 'SESSION_BUSY') {
+      lastFailureMessage = err.message;
+    }
     throw err;
   }
 

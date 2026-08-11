@@ -35,9 +35,11 @@ import { ensureStateDir } from './src/storage.js';
 
 const gladys = new GladysIntegration();
 
-// Let the connection settle (and the user finish typing their password) before
-// the first browser session.
-const FIRST_REFRESH_DELAY_MS = 15_000;
+// Let the connection settle before the first browser session — long enough
+// that a user who just saved their credentials can press "Tester la connexion"
+// without colliding with it, and that a container stuck in a restart loop does
+// not start a Chromium every few seconds.
+const FIRST_REFRESH_DELAY_MS = 60_000;
 
 // Current configuration (hot-reloaded via onConfigUpdated).
 let config = normalizeConfig();
@@ -152,7 +154,13 @@ async function runRefresh() {
   try {
     await refreshAllDevices(gladys, config);
   } catch (err) {
-    logger.error('Refresh failed', err);
+    if (err.code === 'SESSION_BUSY') {
+      // The user clicked a button at the same moment: theirs wins, ours will
+      // run at the next tick. Not an error.
+      logger.info('Refresh postponed: a portal session is already running');
+    } else {
+      logger.error('Refresh failed', err);
+    }
   } finally {
     refreshInFlight = false;
     await publishDeviceTransports().catch(() => {});

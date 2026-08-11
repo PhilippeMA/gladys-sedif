@@ -104,6 +104,40 @@ test('follows the contract link of a multi-contract account', { skip }, async ()
   }
 });
 
+test('refuses a second browser while one is already running', { skip }, async () => {
+  // The failure this guards against: the 6-hour refresh and an impatient click
+  // on "Tester la connexion" each start a full Chromium, and a few of those
+  // together bring a small home server down.
+  const config = normalizeConfig({ email: 'user@example.com', password: 'secret' });
+
+  const first = downloadHistoryCsv(config);
+  await assert.rejects(
+    () => downloadHistoryCsv(config),
+    (err) => {
+      assert.equal(err.code, 'SESSION_BUSY');
+      return true;
+    },
+  );
+  assert.equal(await first, CSV);
+
+  // ...and the lock is released, so the next one goes through.
+  assert.equal(await downloadHistoryCsv(config), CSV);
+});
+
+test('kills the browser when the session outlives its deadline', { skip }, async () => {
+  const config = normalizeConfig({ email: 'user@example.com', password: 'secret' });
+  await assert.rejects(
+    () => downloadHistoryCsv(config, { deadlineMs: 1 }),
+    (err) => {
+      assert.equal(err.code, 'DEADLINE_EXCEEDED');
+      assert.match(err.message, /did not answer within/);
+      return true;
+    },
+  );
+  // The browser was closed and the lock released despite the abort.
+  assert.equal(await downloadHistoryCsv(config), CSV);
+});
+
 test('reports a refused login instead of timing out silently', { skip }, async () => {
   const refusing = await startFakePortal({ csv: CSV, rejectLogin: true });
   try {

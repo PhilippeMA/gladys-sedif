@@ -122,3 +122,25 @@ conteneur chez vous, et utilisés uniquement pour se connecter à
 - **La courbe s'arrête net à une date passée** : c'est le comportement attendu
   quand l'exploitant cesse de publier ; les jours manquants seront importés dès
   qu'ils apparaîtront sur le site.
+- **« L'action a échoué. Vérifiez que l'intégration est démarrée. »** : Gladys
+  accorde au maximum 120 secondes à un bouton pour répondre. L'intégration
+  s'arrête d'elle-même avant cette limite pour vous renvoyer une vraie
+  explication ; si vous voyez malgré tout ce message générique, c'est que le
+  conteneur ne répond plus du tout — regardez ses logs.
+
+## Charge machine
+
+Ouvrir un navigateur coûte cher : comptez quelques centaines de Mo de mémoire
+et plusieurs dizaines de secondes de processeur à chaque relevé. C'est pourquoi
+l'intervalle par défaut est de 6 heures et que le minimum est d'une heure.
+
+L'intégration n'ouvre **jamais deux navigateurs à la fois** : si vous cliquez
+sur un bouton pendant qu'un relevé automatique tourne, le second refuse de
+démarrer et vous le dit. Chaque session a également une durée maximale
+au-delà de laquelle le navigateur est tué, pour qu'une page bloquée ne laisse
+pas un Chromium tourner indéfiniment.
+
+Si votre machine reste chargée en permanence alors que l'intégration est
+installée, arrêtez-la depuis Gladys : la charge doit retomber immédiatement.
+Si ce n'est pas le cas, elle vient d'autre chose — la construction de l'image
+Docker, par exemple, est bien plus lourde que son exécution.

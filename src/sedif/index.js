@@ -25,7 +25,8 @@ export async function fetchHistory(config, deps = {}) {
   const download = deps.download ?? downloadHistoryCsv;
 
   const started = Date.now();
-  const csv = await download(config);
+  // `deps` carries the session budget (deadlineMs) as well as the test seam.
+  const csv = await download(config, deps);
   const readings = parseHistoryCsv(csv);
   const latest = latestReading(readings, config.include_estimated);
 

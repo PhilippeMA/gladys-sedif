@@ -44,9 +44,24 @@ export function loginUrl() {
 // Name the portal gives to the daily export; also how we find the hidden link.
 export const DOWNLOAD_FILENAME = 'historique_jours_litres.csv';
 
-// The portal is slow, and a cold Lightning page is slower still.
-const NAVIGATION_TIMEOUT_MS = 60_000;
-const STEP_TIMEOUT_MS = 30_000;
+// The portal is slow, and a cold Lightning page is slower still — but every
+// second spent waiting is a second of Chromium sitting on a home server's CPU,
+// so these are tight enough to fit inside the deadlines below.
+const NAVIGATION_TIMEOUT_MS = 45_000;
+const STEP_TIMEOUT_MS = 20_000;
+
+/** Whole-session budget, beyond which the browser is killed no matter what. */
+export const DEFAULT_DEADLINE_MS = 180_000;
+
+// Resource types the CSV does not need. A Salesforce app pulls megabytes of
+// images and webfonts; decoding them is pure CPU burnt on a box that has other
+// things to do, on a page nobody will ever look at.
+const BLOCKED_RESOURCES = new Set(['image', 'media', 'font']);
+
+// ONE browser at a time, integration-wide. Without this, the scheduled refresh
+// and an impatient click on "Tester la connexion" each start a full Chromium;
+// a few of those together are enough to bring a small home server to its knees.
+let sessionInFlight = false;
 
 /**
  * Sign in and bring back the raw daily consumption CSV.
@@ -54,30 +69,81 @@ const STEP_TIMEOUT_MS = 30_000;
  * @param {object} config normalized integration configuration
  * @param {object} [deps] injection seam for the tests
  * @param {() => Promise<import('playwright-core').Browser>} [deps.launchBrowser]
+ * @param {number} [deps.deadlineMs] whole-session budget
  * @returns {Promise<string>} the CSV content
  */
 export async function downloadHistoryCsv(config, deps = {}) {
   const launchBrowser = deps.launchBrowser ?? defaultLaunchBrowser;
+  const deadlineMs = deps.deadlineMs ?? DEFAULT_DEADLINE_MS;
 
-  const browser = await launchBrowser();
+  if (sessionInFlight) {
+    throw new PortalError(
+      'SESSION_BUSY',
+      'A portal session is already running; wait for it to finish before starting another',
+    );
+  }
+  sessionInFlight = true;
+
+  let browser;
+  try {
+    browser = await launchBrowser();
+  } catch (err) {
+    // Nothing is running: release the lock, or every later attempt is refused.
+    sessionInFlight = false;
+    throw err;
+  }
+
   try {
     const context = await browser.newContext({
       locale: 'fr-FR',
       timezoneId: 'Europe/Paris',
-      viewport: { width: 1280, height: 1024 },
+      viewport: { width: 1280, height: 800 },
     });
     context.setDefaultTimeout(STEP_TIMEOUT_MS);
     context.setDefaultNavigationTimeout(NAVIGATION_TIMEOUT_MS);
+    await context.route('**/*', (route) =>
+      BLOCKED_RESOURCES.has(route.request().resourceType()) ? route.abort() : route.continue(),
+    );
 
     const page = await context.newPage();
-    await signIn(page, config);
-    await openHistoryPage(page, config);
-    return await readCsvFromPage(page);
+    const session = (async () => {
+      await signIn(page, config);
+      await openHistoryPage(page, config);
+      return readCsvFromPage(page);
+    })();
+    // Whatever the session is stuck on, the browser dies at the deadline: the
+    // `finally` below closes it, which makes the abandoned session reject.
+    session.catch(() => {});
+    return await withDeadline(session, deadlineMs);
   } finally {
-    // Always release the browser: a leaked Chromium would survive every poll
+    // Always release the browser: a leaked Chromium would survive every refresh
     // and eat the memory of the box within a day.
     await browser.close().catch((err) => logger.warn('Closing the browser failed', err));
+    sessionInFlight = false;
   }
+}
+
+/** Reject with a PortalError once `ms` has passed, whatever `promise` is doing. */
+function withDeadline(promise, ms) {
+  let timer;
+  const deadline = new Promise((_resolve, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new PortalError(
+            'DEADLINE_EXCEEDED',
+            `The portal did not answer within ${Math.round(ms / 1000)} s`,
+          ),
+        ),
+      ms,
+    );
+  });
+  return Promise.race([promise, deadline]).finally(() => clearTimeout(timer));
+}
+
+/** Test seam: the session lock is module state and must not leak between tests. */
+export function resetSessionLock() {
+  sessionInFlight = false;
 }
 
 /** Sign in with the credentials of the account, unless already signed in. */
@@ -264,6 +330,12 @@ export function launchOptions() {
       // first heavy page.
       '--disable-dev-shm-usage',
       '--disable-gpu',
+      '--disable-software-rasterizer',
+      // This runs on a home server that has better things to do. Nobody will
+      // ever look at this page: decoding its images is pure wasted CPU, and
+      // one renderer is plenty for a single tab.
+      '--blink-settings=imagesEnabled=false',
+      '--renderer-process-limit=1',
       // The rootfs is read-only: the crash handler must not try to open its
       // database under a path it cannot create.
       `--crash-dumps-dir=${tmpdir()}`,

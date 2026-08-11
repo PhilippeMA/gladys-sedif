@@ -118,3 +118,23 @@ party service is contacted.
 - **The chart stops at a past date**: that is the expected behaviour when the
   operator stops publishing; the missing days are imported as soon as they show
   up on the website.
+- **"The action failed. Check that the integration is started."**: Gladys gives
+  a button 120 seconds at most to answer. The integration gives up before that
+  to send you a real explanation, so if you still get this generic message the
+  container has stopped answering entirely — check its logs.
+
+## Machine load
+
+Opening a browser is expensive: a few hundred megabytes of memory and tens of
+seconds of CPU per reading. That is why the default interval is 6 hours and the
+minimum is one hour.
+
+The integration never opens two browsers at once: click a button while a
+scheduled reading is running and the second one refuses to start and says so.
+Each session also has a hard time limit after which the browser is killed, so a
+stuck page cannot leave a Chromium running forever.
+
+If your machine stays loaded while the integration is installed, stop it from
+Gladys: the load should drop immediately. If it does not, it comes from
+something else — building the Docker image, for one, is far heavier than
+running it.
