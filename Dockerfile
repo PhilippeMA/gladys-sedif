@@ -23,6 +23,9 @@
 # `--no-shell` keeps the FULL browser rather than the lighter headless shell:
 # the portal is a Salesforce app, and the full build in new-headless mode is
 # the closest thing to what a real visitor runs. Worth the extra megabytes.
+# This pairs with `channel: 'chromium'` in src/sedif/portal.js — WITHOUT it,
+# `headless: true` hunts for the headless shell this line does not install and
+# the launch fails with "Executable doesn't exist". Change one, change both.
 # -----------------------------------------------------------------------------
 
 FROM node:24-bookworm-slim
@@ -48,7 +51,13 @@ RUN npx playwright-core install --with-deps --no-shell chromium \
 # Then the integration code.
 COPY index.js ./
 COPY src ./src
+COPY scripts ./scripts
 COPY gladys-assistant-integration.json ./
+
+# Fail the BUILD, not the user's evening: ask the code itself where it expects
+# the browser and check it is there. Both browser failures this integration has
+# had were packaging mistakes invisible until a refresh ran on the real box.
+RUN node scripts/check-browser.js
 
 ENV NODE_ENV=production
 # Chromium writes a throw-away profile at every launch, and Playwright derives

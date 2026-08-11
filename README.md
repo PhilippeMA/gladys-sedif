@@ -77,9 +77,10 @@ overrides the login page — the portal has already moved twice
 │  │  └─ csv.js                      #   pure parser + reading selection
 │  ├─ storage.js                     # import cursor + scratch dir on /data
 │  └─ config.js                      # config defaults + normalization
+├─ scripts/check-browser.js          # build-time guard: right browser, right path
 ├─ docs/{en,fr}.md                   # user documentation, re-hosted by Gladys
 ├─ gladys-assistant-integration.json # manifest
-└─ Dockerfile                        # Debian + distro Chromium, multi-arch
+└─ Dockerfile                        # Debian + Playwright's Chromium, multi-arch
 ```
 
 ## Import semantics
@@ -119,6 +120,7 @@ major version and fails at launch (see the Dockerfile).
 npm run format:check   # Prettier
 npm run lint           # ESLint
 npm test               # node --test
+npm run check:browser  # is the browser the code asks for actually installed?
 ```
 
 The suite covers the CSV parser, the configuration, the manifest/code
@@ -127,6 +129,13 @@ export. It also drives **a real Chromium** against a stand-in portal
 ([`test/helpers/fakePortal.js`](./test/helpers/fakePortal.js)) to exercise the
 browser plumbing — those tests skip when no Chromium is installed; CI installs
 one so they always run.
+
+`check:browser` also runs inside the Docker build, so an image that ships the
+wrong browser fails to build instead of failing hours later on the user's box.
+Browser packaging is the one thing here that unit tests cannot see: the code
+asks for `channel: 'chromium'` (the full browser, new headless mode) and the
+image installs it with `--no-shell`. **Change one and you must change the
+other** — mismatch them and Playwright hunts for a binary that is not there.
 
 What no test can cover: whether the selectors still match the live portal. Only
 a run against the real site, with real credentials, tells you that — the

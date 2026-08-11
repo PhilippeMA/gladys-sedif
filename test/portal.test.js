@@ -12,6 +12,7 @@ import {
   PortalError,
   decodeDataUri,
   historyUrlFrom,
+  launchOptions,
 } from '../src/sedif/portal.js';
 
 const CSV = 'Date;Index;Consommation;Methode\n2026-08-08 00:00:00;1234414;114;Mesuré\n';
@@ -39,6 +40,49 @@ test('an href that is not a data URI is reported, not silently parsed', () => {
 test('the portal entry points are the ones documented for users', () => {
   assert.equal(DEFAULT_LOGIN_URL, 'https://connexion.leaudiledefrance.fr/s/login/');
   assert.equal(DOWNLOAD_FILENAME, 'historique_jours_litres.csv');
+});
+
+test('the browser is launched as the full Chromium, not the headless shell', () => {
+  // This is what broke in production: `headless: true` alone makes Playwright
+  // look for `chromium_headless_shell-<rev>`, a separate binary the image does
+  // not install, and the launch fails before reaching the portal. The channel
+  // is what selects the full browser the Dockerfile actually ships.
+  const options = launchOptions();
+  assert.equal(options.channel, 'chromium');
+  assert.equal(options.headless, true);
+});
+
+test('the browser gets the flags a read-only, shm-less container needs', () => {
+  const args = launchOptions().args;
+  assert.ok(args.includes('--no-sandbox'), 'the container cannot grant the Chromium sandbox');
+  assert.ok(args.includes('--disable-dev-shm-usage'), '/dev/shm is tiny in a container');
+  assert.ok(
+    args.some((arg) => arg.startsWith('--crash-dumps-dir=')),
+    'the crash handler must not write to the read-only rootfs',
+  );
+  // No --user-data-dir: Playwright rejects it outright in launch().
+  assert.ok(!args.some((arg) => arg.startsWith('--user-data-dir')));
+});
+
+test('CHROMIUM_PATH overrides the binary, and nothing is forced without it', () => {
+  const saved = process.env.CHROMIUM_PATH;
+  try {
+    process.env.CHROMIUM_PATH = '/somewhere/chrome';
+    assert.equal(launchOptions().executablePath, '/somewhere/chrome');
+
+    // Unset: Playwright must be free to resolve the channel itself. An empty
+    // string has to behave like "unset", not like a path to nowhere.
+    delete process.env.CHROMIUM_PATH;
+    assert.equal(launchOptions().executablePath, undefined);
+    process.env.CHROMIUM_PATH = '';
+    assert.equal(launchOptions().executablePath, undefined);
+  } finally {
+    if (saved === undefined) {
+      delete process.env.CHROMIUM_PATH;
+    } else {
+      process.env.CHROMIUM_PATH = saved;
+    }
+  }
 });
 
 test('the history page is derived from wherever the login landed', () => {

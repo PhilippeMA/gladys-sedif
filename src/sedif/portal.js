@@ -236,16 +236,24 @@ export function historyUrlFrom(currentUrl) {
 }
 
 /**
- * Launch the Chromium the image installed (see the Dockerfile).
- *
- * `CHROMIUM_PATH` overrides the binary for a local run, but note that a
- * DISTRO Chromium is not interchangeable with Playwright's: their versions
- * must match, or the launch dies with a crashpad error and "Target page,
- * context or browser has been closed". The image therefore ships Playwright's
- * own build and sets no CHROMIUM_PATH.
+ * Options used to launch the browser. Exported so a test can pin them down:
+ * getting this object wrong is what makes the integration fail before it even
+ * reaches the portal.
  */
-async function defaultLaunchBrowser() {
-  return chromium.launch({
+export function launchOptions() {
+  return {
+    // `channel: 'chromium'` selects the FULL browser in new-headless mode.
+    // Without it, `headless: true` looks for `chromium_headless_shell-<rev>`
+    // — the separate old-headless binary, which the image deliberately does
+    // not install (`--no-shell`), and the launch fails with "Executable
+    // doesn't exist". Against a Salesforce app, the full browser is also the
+    // closest thing to what a real visitor runs.
+    channel: 'chromium',
+    // Overrides the binary for a local run. A DISTRO Chromium is NOT
+    // interchangeable with Playwright's: their versions must match, or the
+    // launch dies with a crashpad error and "Target page, context or browser
+    // has been closed". The image ships Playwright's own build and sets no
+    // CHROMIUM_PATH; when it is set, it wins over the channel.
     executablePath: process.env.CHROMIUM_PATH || undefined,
     headless: true,
     args: [
@@ -264,7 +272,23 @@ async function defaultLaunchBrowser() {
     // land on the writable volume; Playwright derives it from TMPDIR, which
     // `ensureStateDir()` points at /data (see src/storage.js). Passing
     // --user-data-dir here instead is rejected by Playwright.
-  });
+  };
+}
+
+/** Launch the Chromium the image installed (see the Dockerfile). */
+async function defaultLaunchBrowser() {
+  try {
+    return await chromium.launch(launchOptions());
+  } catch (err) {
+    // The raw Playwright message is genuinely useful (it names the path it
+    // looked at), so keep it and add what to do about it.
+    throw new PortalError(
+      'BROWSER_UNAVAILABLE',
+      `Cannot start the browser: ${err.message.split('\n')[0]}. ` +
+        'The image must ship the Chromium matching its playwright-core version ' +
+        '(see the Dockerfile).',
+    );
+  }
 }
 
 /** An error the user can act on: the message ends up under the action button. */

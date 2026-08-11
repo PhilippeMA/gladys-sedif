@@ -42,6 +42,12 @@ jobs:
       - name: Install Chromium
         run: npx playwright-core install --with-deps --no-shell chromium
 
+      # Same check the Docker build runs: the browser the code asks for must be
+      # the one that got installed. Cheap here, and it catches the packaging
+      # mistake before anyone waits for an image.
+      - name: Check the browser is the one the code asks for
+        run: npm run check:browser
+
       - name: Check formatting (Prettier)
         run: npm run format:check
 
