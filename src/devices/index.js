@@ -10,14 +10,18 @@
 //   - key                                : short identifier, used in the logs
 //   - deviceExternalId(gladys, config)   : the device external_id, for dispatch
 //   - buildDevice(gladys, config)        : the discovery payload sent to Gladys
-//   - onPoll(gladys, config)   (optional): periodic read
+//   - refresh(gladys, config)  (optional): read the source and publish states
 //   - transport(gladys, config)(optional): effective transport, shown as a badge
 //   - actions                  (optional): manifest action handlers, keyed by
 //     the action `key` declared in gladys-assistant-integration.json
 //
-// Unlike the template, `deviceExternalId` takes the config: the identity of a
-// SEDIF device comes from the contract the user configured, not from a device
-// enumerated on a bus.
+// Two departures from the template, both forced by what a SEDIF meter is:
+//   - `deviceExternalId` takes the config, because the identity of the device
+//     comes from the contract the user configured, not from a device
+//     enumerated on a bus;
+//   - `refresh` replaces `onPoll`, because the core's polling only accepts
+//     intervals up to one minute (see waterMeter.buildDevice) while this meter
+//     is published once a day. index.js runs the schedule instead.
 // -----------------------------------------------------------------------------
 
 import { waterMeter } from './waterMeter.js';
@@ -30,11 +34,17 @@ export function buildDiscoveredDevices(gladys, config) {
 }
 
 /**
- * Find the blueprint that owns a device, from its external_id — this is what
- * routes an incoming onPoll to the right module.
+ * Refresh every device that knows how to refresh itself.
+ * @returns {Promise<number>} number of days published across all devices
  */
-export function findBlueprintByDevice(gladys, device, config) {
-  return DEVICE_BLUEPRINTS.find((bp) => bp.deviceExternalId(gladys, config) === device.external_id);
+export async function refreshAllDevices(gladys, config, deps = {}) {
+  let published = 0;
+  for (const blueprint of DEVICE_BLUEPRINTS) {
+    if (typeof blueprint.refresh === 'function') {
+      published += (await blueprint.refresh(gladys, config, deps)) ?? 0;
+    }
+  }
+  return published;
 }
 
 /**

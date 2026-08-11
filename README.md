@@ -23,6 +23,13 @@ Both keep history. Readings are published with their **own `created_at`**, so
 the chart is dated by the day of the reading rather than by the day of the
 import — including the backfill done on the first run.
 
+The device is published **without `poll_frequency`**, and the integration runs
+its own refresh loop (`index.js`). That is not a stylistic choice: the Gladys
+core validates `poll_frequency` against its six `DEVICE_POLL_FREQUENCIES`
+values — 1 s to 1 minute, in **milliseconds** — and rejects the whole publish
+with `invalid poll frequency` otherwise. A meter the operator reads once a day,
+where every refresh costs a browser session, has no business on that clock.
+
 ## How it gets the data, and why
 
 Neither the SEDIF nor Veolia publishes an API for consumption data. The customer
@@ -92,7 +99,7 @@ does not have yet:
 
 ```bash
 npm install
-npx playwright-core install chromium        # or use a distro Chromium
+npx playwright-core install --no-shell chromium   # NOT the distro Chromium
 GLADYS_HOST_API_URL="http://localhost:1443" \
 GLADYS_INTEGRATION_TOKEN="<token>" \
 GLADYS_INTEGRATION_SELECTOR="sedif" \
@@ -102,7 +109,9 @@ npm start
 ```
 
 `GLADYS_SEDIF_STATE_DIR` replaces `/data` outside the sandbox. `CHROMIUM_PATH`
-points at the browser binary when it is not the image's `/usr/bin/chromium`.
+overrides the browser binary — but only ever point it at a build matching the
+`playwright-core` version in `package.json`. A distro Chromium is a different
+major version and fails at launch (see the Dockerfile).
 
 ## Quality checks
 

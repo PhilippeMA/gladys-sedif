@@ -64,6 +64,13 @@ Chaque relevé est publié dans Gladys **à sa date réelle**, pas à la date de
 l'import : votre courbe de consommation est donc correctement datée, y compris
 pour l'historique repris au premier démarrage.
 
+L'intégration gère elle-même son rythme de rafraîchissement, sans passer par le
+mécanisme de scrutation de Gladys (qui ne descend pas en dessous d'un
+rafraîchissement par minute — inadapté à une donnée quotidienne coûteuse à
+récupérer). Un premier relevé a lieu une quinzaine de secondes après le
+démarrage ou après chaque modification de la configuration, puis à l'intervalle
+que vous avez choisi.
+
 ## Relevés mesurés et estimés
 
 L'espace client indique pour chaque journée si la valeur a été **mesurée** ou

@@ -17,7 +17,7 @@ const stateDir = await mkdtemp(path.join(tmpdir(), 'gladys-sedif-'));
 process.env.GLADYS_SEDIF_STATE_DIR = stateDir;
 
 const { waterMeter, resetBadgeState } = await import('../src/devices/waterMeter.js');
-const { buildDiscoveredDevices, buildTransportEntries, findBlueprintByDevice } =
+const { buildDiscoveredDevices, buildTransportEntries, refreshAllDevices } =
   await import('../src/devices/index.js');
 const { normalizeConfig } = await import('../src/config.js');
 const { clearCursor, readCursor } = await import('../src/storage.js');
@@ -53,7 +53,6 @@ test('the device carries an index in m3 and a daily volume in litres', () => {
   const [device] = buildDiscoveredDevices(gladys, CONFIG);
 
   assert.equal(device.external_id, 'ext:sedif:water-meter:1234567');
-  assert.equal(device.poll_frequency, CONFIG.poll_frequency);
   assert.deepEqual(
     device.features.map((f) => [f.unit, f.type, f.read_only, f.keep_history]),
     [
@@ -70,16 +69,27 @@ test('a device identity survives an empty contract number', () => {
   assert.equal(device.external_id, 'ext:sedif:water-meter:user-example-com');
 });
 
-test('onPoll dispatches to the blueprint that owns the device', () => {
+test('the device declares NO poll_frequency', () => {
+  // The core only accepts its six DEVICE_POLL_FREQUENCIES values (1 s to 1 min,
+  // in milliseconds) and rejects the whole publish with "invalid poll
+  // frequency" otherwise. A meter read once a day is refreshed by the
+  // integration's own scheduler instead — see index.js.
   const gladys = createFakeGladys();
   const [device] = buildDiscoveredDevices(gladys, CONFIG);
-  assert.equal(findBlueprintByDevice(gladys, device, CONFIG), waterMeter);
-  assert.equal(findBlueprintByDevice(gladys, { external_id: 'ext:other' }, CONFIG), undefined);
+  assert.equal(device.poll_frequency, undefined);
+  assert.ok(!('poll_frequency' in device), 'the key must be absent, not undefined');
+});
+
+test('refreshAllDevices drives every blueprint that can refresh', async () => {
+  const gladys = createFakeGladys();
+  const published = await refreshAllDevices(gladys, CONFIG, fromCsv(CSV));
+  assert.equal(published, 3);
+  assert.equal(gladys.published.length, 6);
 });
 
 test('a first poll imports the measured days, each with its own date', async () => {
   const gladys = createFakeGladys();
-  await waterMeter.onPoll(gladys, CONFIG, fromCsv(CSV));
+  await waterMeter.refresh(gladys, CONFIG, fromCsv(CSV));
 
   const index = gladys.published.filter((p) => p.featureExternalId.endsWith(':index'));
   const daily = gladys.published.filter((p) => p.featureExternalId.endsWith(':daily-volume'));
@@ -101,20 +111,24 @@ test('a first poll imports the measured days, each with its own date', async () 
 
 test('a second poll on the same export publishes nothing', async () => {
   const first = createFakeGladys();
-  await waterMeter.onPoll(first, CONFIG, fromCsv(CSV));
+  await waterMeter.refresh(first, CONFIG, fromCsv(CSV));
   assert.equal(await readCursor(contractKey(CONFIG)), '2026-08-08');
 
   const second = createFakeGladys();
-  await waterMeter.onPoll(second, CONFIG, fromCsv(CSV));
+  await waterMeter.refresh(second, CONFIG, fromCsv(CSV));
   assert.equal(second.published.length, 0);
 });
 
 test('a later export only publishes the days added since', async () => {
   const first = createFakeGladys();
-  await waterMeter.onPoll(first, CONFIG, fromCsv(CSV));
+  await waterMeter.refresh(first, CONFIG, fromCsv(CSV));
 
   const second = createFakeGladys();
-  await waterMeter.onPoll(second, CONFIG, fromCsv(`${CSV}\n2026-08-09 00:00:00;1234500;86;Mesuré`));
+  await waterMeter.refresh(
+    second,
+    CONFIG,
+    fromCsv(`${CSV}\n2026-08-09 00:00:00;1234500;86;Mesuré`),
+  );
 
   assert.deepEqual(
     second.published
@@ -126,7 +140,7 @@ test('a later export only publishes the days added since', async () => {
 
 test('resync_history forgets the cursor and republishes everything', async () => {
   const first = createFakeGladys();
-  await waterMeter.onPoll(first, CONFIG, fromCsv(CSV));
+  await waterMeter.refresh(first, CONFIG, fromCsv(CSV));
 
   const second = createFakeGladys();
   const message = await waterMeter.actions.resync_history(second, {
@@ -149,7 +163,7 @@ test('a long history is split into batches of at most 100 states', async () => {
   }
 
   const gladys = createFakeGladys();
-  await waterMeter.onPoll(gladys, CONFIG, fromCsv(rows.join('\n')));
+  await waterMeter.refresh(gladys, CONFIG, fromCsv(rows.join('\n')));
 
   assert.equal(gladys.published.length, 240);
   assert.ok(gladys.batches.length > 1, 'the import should be batched');
@@ -174,21 +188,21 @@ test('the cursor advances batch by batch, so a crash does not replay a batch', a
     }
   };
 
-  await assert.rejects(() => waterMeter.onPoll(gladys, CONFIG, fromCsv(rows.join('\n'))));
+  await assert.rejects(() => waterMeter.refresh(gladys, CONFIG, fromCsv(rows.join('\n'))));
   // The first batch made it through, and only that one is behind the cursor.
   assert.equal(await readCursor(contractKey(CONFIG)), '2026-02-19');
 });
 
 test('nothing is polled while the credentials are missing', async () => {
   const gladys = createFakeGladys();
-  await waterMeter.onPoll(gladys, normalizeConfig({}), fromCsv(CSV));
+  await waterMeter.refresh(gladys, normalizeConfig({}), fromCsv(CSV));
   assert.equal(gladys.published.length, 0);
 });
 
 test('the badge is nominal after a successful, fresh import', async () => {
   const gladys = createFakeGladys();
   const fresh = new Date().toISOString().slice(0, 10);
-  await waterMeter.onPoll(
+  await waterMeter.refresh(
     gladys,
     CONFIG,
     fromCsv(`Date;Index;Conso;M\n${fresh} 00:00:00;10;5;Mesuré`),
@@ -203,7 +217,7 @@ test('the badge is nominal after a successful, fresh import', async () => {
 test('a history the portal stopped updating shows up as degraded', async () => {
   const gladys = createFakeGladys();
   const stale = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  await waterMeter.onPoll(
+  await waterMeter.refresh(
     gladys,
     CONFIG,
     fromCsv(`Date;Index;Conso;M\n${stale} 00:00:00;10;5;Mesuré`),
@@ -222,7 +236,7 @@ test('a failed poll surfaces its reason on the badge', async () => {
     },
   };
 
-  await assert.rejects(() => waterMeter.onPoll(gladys, CONFIG, failing));
+  await assert.rejects(() => waterMeter.refresh(gladys, CONFIG, failing));
 
   const [entry] = buildTransportEntries(gladys, CONFIG);
   assert.equal(entry.degraded, true);

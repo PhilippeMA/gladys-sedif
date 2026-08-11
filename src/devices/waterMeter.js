@@ -9,10 +9,13 @@
 //     day, the one people look at.
 //
 // The portal publishes a reading with one or two days of delay, so this device
-// is a HISTORY IMPORTER more than a live sensor: each poll fetches the whole
+// is a HISTORY IMPORTER more than a live sensor: each refresh fetches the whole
 // exported period and publishes the days Gladys does not have yet, each with
 // its own `created_at`. An import cursor on the /data volume is what keeps a
 // restart from duplicating the chart.
+//
+// The refresh is driven by the integration itself, not by the Gladys core:
+// see `buildDevice` for why the core's `poll_frequency` cannot be used here.
 // -----------------------------------------------------------------------------
 
 import {
@@ -65,7 +68,12 @@ export const waterMeter = {
     return {
       name: config.contract ? `Compteur d'eau SEDIF ${config.contract}` : "Compteur d'eau SEDIF",
       external_id: ids.device,
-      poll_frequency: config.poll_frequency,
+      // NO `poll_frequency`: the core only accepts the six values of its
+      // DEVICE_POLL_FREQUENCIES list (in milliseconds, 1 s to 1 min), and
+      // anything else is rejected with "invalid poll frequency". Driving a
+      // browser session against the portal once a minute would be absurd for
+      // a meter read once a day, so this integration schedules its own refresh
+      // instead — see `refresh()` below and the loop in index.js.
       features: [
         {
           name: 'Index du compteur',
@@ -157,12 +165,17 @@ export const waterMeter = {
     },
   },
 
-  async onPoll(gladys, config, deps = {}) {
+  /**
+   * Refresh this device. Called by the integration's own scheduler (index.js),
+   * NOT by the Gladys core: the core's polling tops out at one minute, which
+   * makes no sense for a value published once a day.
+   */
+  async refresh(gladys, config, deps = {}) {
     if (!isConfigured(config)) {
-      logger.info('Credentials missing, nothing to poll yet');
-      return;
+      logger.info('Credentials missing, nothing to refresh yet');
+      return 0;
     }
-    await importHistory(gladys, config, deps);
+    return importHistory(gladys, config, deps);
   },
 };
 

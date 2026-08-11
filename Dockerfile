@@ -8,24 +8,28 @@
 #   - multi-arch image (linux/amd64 + linux/arm64), see the CI workflow
 #
 # Why Debian and not the template's Alpine: this integration drives a real
-# Chromium (the portal has no API, see src/sedif/portal.js), and Chromium is
-# packaged for both amd64 and arm64 on Debian while Alpine's build is musl-only
-# and unsupported by Playwright. We install the DISTRO Chromium and use
-# `playwright-core`, so nothing is downloaded at install or at run time.
+# Chromium (the portal has no API, see src/sedif/portal.js), and Playwright
+# does not support musl.
+#
+# Why PLAYWRIGHT'S Chromium and not the distro package: they are not
+# interchangeable. Playwright pins itself to one exact browser build (1.62
+# expects Chromium 151); Debian bookworm ships a much older one, built with
+# different flags. Pairing the two dies at launch — "chrome_crashpad_handler:
+# --database is required", then SIGTRAP and "Target page, context or browser
+# has been closed". So the image installs the browser that matches the
+# `playwright-core` in package.json; `--with-deps` pulls in the system
+# libraries and fonts it needs.
+#
+# `--no-shell` keeps the FULL browser rather than the lighter headless shell:
+# the portal is a Salesforce app, and the full build in new-headless mode is
+# the closest thing to what a real visitor runs. Worth the extra megabytes.
 # -----------------------------------------------------------------------------
 
 FROM node:24-bookworm-slim
 
-# chromium        : the browser the portal is driven with
-# fonts-liberation: without a font, Lightning pages render as empty boxes and
-#                   the text-based selectors never match
-# dumb-init       : correct SIGTERM handling for a graceful shutdown
+# dumb-init: correct SIGTERM handling for a graceful shutdown.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends \
-    chromium \
-    fonts-liberation \
-    dumb-init \
-    ca-certificates \
+  && apt-get install -y --no-install-recommends dumb-init ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -34,18 +38,27 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev || npm install --omit=dev
 
+# Browsers outside the default per-user cache: the build runs as root, the
+# container runs as `node`, and ~/.cache would not be the same directory.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx playwright-core install --with-deps --no-shell chromium \
+  && rm -rf /var/lib/apt/lists/* \
+  && chmod -R a+rX /ms-playwright
+
 # Then the integration code.
 COPY index.js ./
 COPY src ./src
 COPY gladys-assistant-integration.json ./
 
 ENV NODE_ENV=production
-# playwright-core ships no browser of its own: point it at the distro one.
-ENV CHROMIUM_PATH=/usr/bin/chromium
-# Chromium needs a writable scratch space for the throw-away profile Playwright
-# creates at each launch, and /data is the only writable mount of the sandbox.
-# `ensureStateDir()` sets this at runtime too, for a container started by hand.
-ENV TMPDIR=/data/chromium
+# Chromium writes a throw-away profile at every launch, and Playwright derives
+# its location from TMPDIR. The default (/tmp) belongs to the read-only rootfs,
+# so point it — and everything else Chromium expects to own — at the volume.
+# `ensureStateDir()` sets TMPDIR again at runtime, for a hand-started container.
+ENV TMPDIR=/data/chromium \
+    HOME=/data \
+    XDG_CONFIG_HOME=/data/chromium \
+    XDG_CACHE_HOME=/data/chromium
 
 # The only writable location allowed at runtime.
 VOLUME ["/data"]

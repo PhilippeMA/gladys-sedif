@@ -23,6 +23,7 @@
 // without waiting for a new release.
 // -----------------------------------------------------------------------------
 
+import { tmpdir } from 'node:os';
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { chromium } from 'playwright-core';
 
@@ -234,7 +235,15 @@ export function historyUrlFrom(currentUrl) {
   return new URL('historique', base).toString();
 }
 
-/** Launch the Chromium shipped in the image (see the Dockerfile). */
+/**
+ * Launch the Chromium the image installed (see the Dockerfile).
+ *
+ * `CHROMIUM_PATH` overrides the binary for a local run, but note that a
+ * DISTRO Chromium is not interchangeable with Playwright's: their versions
+ * must match, or the launch dies with a crashpad error and "Target page,
+ * context or browser has been closed". The image therefore ships Playwright's
+ * own build and sets no CHROMIUM_PATH.
+ */
 async function defaultLaunchBrowser() {
   return chromium.launch({
     executablePath: process.env.CHROMIUM_PATH || undefined,
@@ -247,11 +256,14 @@ async function defaultLaunchBrowser() {
       // first heavy page.
       '--disable-dev-shm-usage',
       '--disable-gpu',
+      // The rootfs is read-only: the crash handler must not try to open its
+      // database under a path it cannot create.
+      `--crash-dumps-dir=${tmpdir()}`,
     ],
-    // The rootfs is read-only, so the throw-away profile Playwright creates for
-    // each launch must land on the writable volume. Playwright derives it from
-    // TMPDIR, which `ensureStateDir()` points at /data (see src/storage.js).
-    // Passing --user-data-dir here instead is rejected by Playwright.
+    // The throw-away profile Playwright creates for each launch also has to
+    // land on the writable volume; Playwright derives it from TMPDIR, which
+    // `ensureStateDir()` points at /data (see src/storage.js). Passing
+    // --user-data-dir here instead is rejected by Playwright.
   });
 }
 

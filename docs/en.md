@@ -63,6 +63,12 @@ Every reading is published in Gladys **at its actual date**, not at the date of
 the import: your consumption chart is correctly dated, including the history
 picked up on the very first run.
 
+The integration paces its own refresh instead of using the Gladys polling
+mechanism, which never goes slower than once a minute — far too fast for a
+daily value that costs a browser session to fetch. A first refresh runs about
+fifteen seconds after startup and after every configuration change, then at the
+interval you chose.
+
 ## Measured and estimated readings
 
 For each day the portal states whether the value was **measured** or
