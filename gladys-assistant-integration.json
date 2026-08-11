@@ -1,0 +1,130 @@
+{
+  "manifest_version": 1,
+  "type": "device",
+  "name": "SEDIF – Eau d'Île-de-France",
+  "description": {
+    "en": "Track your SEDIF water consumption (L'Eau d'Île-de-France / Veolia) in Gladys.",
+    "fr": "Suivez votre consommation d'eau SEDIF (L'Eau d'Île-de-France / Veolia) dans Gladys."
+  },
+  "version": "1.0.0",
+  "docker_image": "ghcr.io/philippema/gladys-sedif:1.0.0",
+  "gladys_version": ">=4.85.0",
+  "cover_image": "https://raw.githubusercontent.com/PhilippeMA/gladys-sedif/main/cover.jpg",
+  "transports": ["cloud"],
+  "config_schema": [
+    {
+      "key": "intro",
+      "type": "section",
+      "label": { "en": "Before you start", "fr": "Avant de commencer" },
+      "description": {
+        "en": "The SEDIF (Syndicat des Eaux d'Île-de-France) publishes no public API: this integration signs in to your customer account on leaudiledefrance.fr with a headless browser, exactly like you would, and reads the daily consumption history of your water meter. Use the credentials of your personal account. Readings are published once a day by the operator, with a one to two day delay.",
+        "fr": "Le SEDIF (Syndicat des Eaux d'Île-de-France) ne publie aucune API publique : cette intégration se connecte à votre espace client leaudiledefrance.fr avec un navigateur sans interface, exactement comme vous le feriez, et lit l'historique de consommation quotidienne de votre compteur. Utilisez les identifiants de votre espace personnel. Les relevés sont publiés une fois par jour par l'exploitant, avec un à deux jours de décalage."
+      },
+      "links": [
+        {
+          "url": "https://www.leaudiledefrance.fr/",
+          "label": { "en": "Customer portal", "fr": "Espace client" }
+        },
+        {
+          "url": "https://www.sedif.com",
+          "label": { "en": "SEDIF website", "fr": "Site du SEDIF" }
+        }
+      ]
+    },
+    {
+      "key": "email",
+      "type": "string",
+      "label": { "en": "Email address", "fr": "Adresse e-mail" },
+      "description": {
+        "en": "The email address of your leaudiledefrance.fr account.",
+        "fr": "L'adresse e-mail de votre compte leaudiledefrance.fr."
+      },
+      "placeholder": { "en": "you@example.com", "fr": "vous@exemple.com" },
+      "required": true
+    },
+    {
+      "key": "password",
+      "type": "secret",
+      "label": { "en": "Password", "fr": "Mot de passe" },
+      "description": {
+        "en": "The password of your leaudiledefrance.fr account. Stored encrypted by Gladys and never sent back to the browser.",
+        "fr": "Le mot de passe de votre compte leaudiledefrance.fr. Stocké chiffré par Gladys et jamais renvoyé au navigateur."
+      },
+      "required": true
+    },
+    {
+      "key": "contract",
+      "type": "string",
+      "label": { "en": "Contract number", "fr": "Numéro de contrat" },
+      "description": {
+        "en": "Only needed if your account holds several contracts. Shown on your bill and in the portal. Leave empty to use the only contract of the account.",
+        "fr": "Utile uniquement si votre compte porte plusieurs contrats. Il figure sur votre facture et dans l'espace client. Laissez vide si votre compte n'a qu'un seul contrat."
+      },
+      "placeholder": { "en": "1234567", "fr": "1234567" },
+      "required": false
+    },
+    {
+      "key": "poll_frequency",
+      "type": "number",
+      "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
+      "description": {
+        "en": "How often the portal is queried, in seconds. The meter is read once a day: there is nothing to gain from a short interval, and each check drives a full browser session.",
+        "fr": "Fréquence d'interrogation de l'espace client, en secondes. Le compteur n'est relevé qu'une fois par jour : un intervalle court n'apporte rien et chaque relevé lance une session de navigateur complète."
+      },
+      "required": false,
+      "default": 21600,
+      "min": 3600,
+      "max": 86400
+    },
+    {
+      "key": "history_days",
+      "type": "number",
+      "label": { "en": "History to import (days)", "fr": "Historique à importer (jours)" },
+      "required": false,
+      "default": 30,
+      "min": 1,
+      "max": 1095
+    },
+    {
+      "key": "include_estimated",
+      "type": "boolean",
+      "label": { "en": "Include estimated readings", "fr": "Inclure les relevés estimés" },
+      "description": {
+        "en": "The portal marks each reading as measured or estimated. Estimated readings are skipped by default because they can make the meter index go backwards.",
+        "fr": "L'espace client indique si un relevé est mesuré ou estimé. Les relevés estimés sont ignorés par défaut car ils peuvent faire reculer l'index du compteur."
+      },
+      "required": false,
+      "default": false
+    },
+    {
+      "key": "history_url",
+      "type": "string",
+      "label": { "en": "History page URL (advanced)", "fr": "URL de la page Historique (avancé)" },
+      "description": {
+        "en": "Leave empty. Only fill this in if the portal moved its consumption history page and the integration can no longer find it.",
+        "fr": "Laissez vide. À renseigner uniquement si l'espace client a déplacé sa page d'historique de consommation et que l'intégration ne la trouve plus."
+      },
+      "required": false
+    }
+  ],
+  "actions": [
+    {
+      "key": "test_connection",
+      "label": { "en": "Test the connection", "fr": "Tester la connexion" },
+      "description": {
+        "en": "Signs in to the portal and reads the latest available meter reading.",
+        "fr": "Se connecte à l'espace client et lit le dernier relevé disponible."
+      },
+      "timeout_seconds": 120
+    },
+    {
+      "key": "resync_history",
+      "label": { "en": "Re-import the history", "fr": "Réimporter l'historique" },
+      "description": {
+        "en": "Forgets the import cursor and pushes the whole configured history again, older readings included.",
+        "fr": "Oublie le curseur d'import et republie tout l'historique configuré, relevés anciens compris."
+      },
+      "timeout_seconds": 120
+    }
+  ]
+}
