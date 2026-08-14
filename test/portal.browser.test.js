@@ -104,6 +104,27 @@ test('follows the contract link of a multi-contract account', { skip }, async ()
   }
 });
 
+test('names an unreachable portal instead of timing out in the browser', { skip }, async () => {
+  // A container with no route out reported this 45 s later as
+  // "page.goto: Timeout exceeded", which reads like a portal problem and sends
+  // you hunting selectors. The pre-flight names the transport failure in a
+  // second, and before paying for a browser.
+  const { assertPortalReachable } = await import('../src/sedif/portal.js');
+
+  // A port nothing listens on: connection refused, the clearest kind of "no".
+  await assert.rejects(
+    () => assertPortalReachable('http://127.0.0.1:1/s/login/', 2000),
+    (err) => {
+      assert.equal(err.code, 'PORTAL_UNREACHABLE');
+      assert.match(err.message, /internet access and working DNS/);
+      return true;
+    },
+  );
+
+  // The stand-in portal answers, so the same check passes against it.
+  await assertPortalReachable(portal.loginUrl, 5000);
+});
+
 test('refuses a second browser while one is already running', { skip }, async () => {
   // The failure this guards against: the 6-hour refresh and an impatient click
   // on "Tester la connexion" each start a full Chromium, and a few of those

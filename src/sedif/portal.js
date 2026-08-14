@@ -53,11 +53,6 @@ const STEP_TIMEOUT_MS = 20_000;
 /** Whole-session budget, beyond which the browser is killed no matter what. */
 export const DEFAULT_DEADLINE_MS = 180_000;
 
-// Resource types the CSV does not need. A Salesforce app pulls megabytes of
-// images and webfonts; decoding them is pure CPU burnt on a box that has other
-// things to do, on a page nobody will ever look at.
-const BLOCKED_RESOURCES = new Set(['image', 'media', 'font']);
-
 // ONE browser at a time, integration-wide. Without this, the scheduled refresh
 // and an impatient click on "Tester la connexion" each start a full Chromium;
 // a few of those together are enough to bring a small home server to its knees.
@@ -108,6 +103,12 @@ export async function downloadHistoryCsv(config, deps = {}) {
   // session lock forever: the button hit the 120 s ack timeout with not one log
   // line to show for it, and the refreshes after it were all "postponed".
   async function runSession() {
+    // Cheap first: a browser session is worth nothing if the host is
+    // unreachable, and the reason is far clearer from here.
+    if (deps.skipReachabilityCheck !== true) {
+      await assertPortalReachable();
+    }
+
     logger.info('Launching the browser...');
     browserPromise = launchBrowser();
     const browser = await browserPromise;
@@ -120,10 +121,12 @@ export async function downloadHistoryCsv(config, deps = {}) {
     });
     context.setDefaultTimeout(STEP_TIMEOUT_MS);
     context.setDefaultNavigationTimeout(NAVIGATION_TIMEOUT_MS);
-    await context.route('**/*', (route) =>
-      BLOCKED_RESOURCES.has(route.request().resourceType()) ? route.abort() : route.continue(),
-    );
 
+    // No `context.route()` here on purpose. Intercepting every request sends
+    // each one of the several hundred a Lightning app makes through a CDP
+    // round-trip into Node — CPU this box does not have to spare, to save
+    // bandwidth that was never the bottleneck. Images are already off through
+    // the Blink flag in launchOptions(), which costs nothing at runtime.
     const page = await context.newPage();
     try {
       await signIn(page, config);
@@ -160,10 +163,44 @@ export function resetSessionLock() {
   sessionInFlight = false;
 }
 
+/**
+ * Is the portal reachable at all from this container?
+ *
+ * A plain HTTP request, before any browser. When a container has no route to
+ * the internet, or DNS does not answer, the browser path reports it 45 seconds
+ * later as "page.goto: Timeout exceeded" — which reads like a portal problem
+ * and sends you looking at selectors. This takes a second and names the real
+ * cause.
+ */
+export async function assertPortalReachable(url = loginUrl(), timeoutMs = 15_000) {
+  try {
+    // Any status is a success here: 200, 302, even 403 all prove the host
+    // answered. Only a transport-level failure matters.
+    const response = await fetch(url, {
+      method: 'GET',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    logger.info(`Portal reachable (HTTP ${response.status})`);
+  } catch (err) {
+    const cause = err.cause?.code ?? err.name;
+    throw new PortalError(
+      'PORTAL_UNREACHABLE',
+      `Cannot reach ${new URL(url).host} from the integration container (${cause}). ` +
+        'Check that the container has internet access and working DNS.',
+    );
+  }
+}
+
 /** Sign in with the credentials of the account, unless already signed in. */
 async function signIn(page, config) {
   logger.info(`Opening ${loginUrl()}`);
-  await page.goto(loginUrl(), { waitUntil: 'domcontentloaded' });
+  // `commit` resolves as soon as the response starts, NOT when every blocking
+  // script of the Lightning bundle has run. What we actually need is the login
+  // form, and the selector wait right below is what really tells us it is
+  // there; waiting for `domcontentloaded` on a Salesforce app just adds a way
+  // to time out with a page that was loading perfectly well.
+  await page.goto(loginUrl(), { waitUntil: 'commit' });
 
   // The portal either shows the login form, or the avatar of a live session.
   await page.waitForSelector('input[type="password"], .profileIcon');
@@ -210,7 +247,7 @@ async function signIn(page, config) {
 async function openHistoryPage(page, config) {
   const target = config.history_url || historyUrlFrom(page.url());
   logger.info(`Opening the history page: ${target}`);
-  await page.goto(target, { waitUntil: 'domcontentloaded' });
+  await page.goto(target, { waitUntil: 'commit' });
 
   if (config.contract) {
     await selectContract(page, config.contract);

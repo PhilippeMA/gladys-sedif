@@ -55,7 +55,11 @@ test('a launch that never returns is bounded, and frees the session lock', async
 
   await assert.rejects(
     () =>
-      downloadHistoryCsv(config, { launchBrowser: () => new Promise(() => {}), deadlineMs: 50 }),
+      downloadHistoryCsv(config, {
+        launchBrowser: () => new Promise(() => {}),
+        deadlineMs: 50,
+        skipReachabilityCheck: true,
+      }),
     (err) => {
       assert.equal(err.code, 'DEADLINE_EXCEEDED');
       return true;
@@ -68,6 +72,7 @@ test('a launch that never returns is bounded, and frees the session lock', async
     () =>
       downloadHistoryCsv(config, {
         launchBrowser: () => Promise.reject(new Error('no browser here')),
+        skipReachabilityCheck: true,
       }),
     (err) => {
       assert.notEqual(err.code, 'SESSION_BUSY');
@@ -83,10 +88,15 @@ test('a second session is refused while the first is still running', async () =>
   const hanging = downloadHistoryCsv(config, {
     launchBrowser: () => new Promise(() => {}),
     deadlineMs: 300,
+    skipReachabilityCheck: true,
   });
 
   await assert.rejects(
-    () => downloadHistoryCsv(config, { launchBrowser: () => new Promise(() => {}) }),
+    () =>
+      downloadHistoryCsv(config, {
+        launchBrowser: () => new Promise(() => {}),
+        skipReachabilityCheck: true,
+      }),
     (err) => {
       assert.equal(err.code, 'SESSION_BUSY');
       return true;
