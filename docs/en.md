@@ -164,6 +164,11 @@ party service is contacted.
 - **The chart stops at a past date**: that is the expected behaviour when the
   operator stops publishing; the missing days are imported as soon as they show
   up on the website.
+- **"Cannot reach connexion.leaudiledefrance.fr"**: the message names the
+  exact cause — DNS resolution, refused connection, or no answer at all. The
+  integration only ever checks raw network reach, never the certificate: the
+  portal serves an incomplete chain that browsers repair by themselves, and a
+  check stricter than the browser would reject a perfectly healthy setup.
 - **"The action failed. Check that the integration is started."**: Gladys gives
   a button 120 seconds at most to answer. The integration gives up before that
   to send you a real explanation, so if you still get this generic message the

@@ -116,13 +116,49 @@ test('names an unreachable portal instead of timing out in the browser', { skip 
     () => assertPortalReachable('http://127.0.0.1:1/s/login/', 2000),
     (err) => {
       assert.equal(err.code, 'PORTAL_UNREACHABLE');
-      assert.match(err.message, /internet access and working DNS/);
+      assert.match(err.message, /refused the connection/);
+      return true;
+    },
+  );
+
+  // A name that cannot resolve is named as a DNS problem, not a vague one.
+  await assert.rejects(
+    () => assertPortalReachable('https://nonexistent.invalid/s/login/', 5000),
+    (err) => {
+      assert.equal(err.code, 'PORTAL_UNREACHABLE');
+      assert.match(err.message, /DNS cannot resolve/);
       return true;
     },
   );
 
   // The stand-in portal answers, so the same check passes against it.
   await assertPortalReachable(portal.loginUrl, 5000);
+});
+
+test('the pre-flight never refuses what the browser would accept', { skip }, async () => {
+  // The regression that cost a whole round-trip: the first version did a
+  // `fetch()`, and a portal serving an incomplete certificate chain — which
+  // browsers repair themselves — was reported as unreachable. The check stops
+  // at TCP precisely so it can never be stricter than the browser behind it.
+  const { assertPortalReachable } = await import('../src/sedif/portal.js');
+  const { createServer } = await import('node:net');
+
+  // A listener that accepts the connection and speaks no TLS whatsoever: any
+  // handshake against it fails, exactly as a bad certificate chain would.
+  const server = createServer((socket) => socket.resume());
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  try {
+    // `fetch` cannot get through it...
+    await assert.rejects(() => fetch(`https://127.0.0.1:${port}/`));
+
+    // ...and the pre-flight passes, because the host IS reachable — which is
+    // the only question it is allowed to answer.
+    await assertPortalReachable(`https://127.0.0.1:${port}/s/login/`, 5000);
+  } finally {
+    server.close();
+  }
 });
 
 test('refuses a second browser while one is already running', { skip }, async () => {

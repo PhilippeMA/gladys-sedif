@@ -23,6 +23,7 @@
 // without waiting for a new release.
 // -----------------------------------------------------------------------------
 
+import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { chromium } from 'playwright-core';
@@ -166,29 +167,59 @@ export function resetSessionLock() {
 /**
  * Is the portal reachable at all from this container?
  *
- * A plain HTTP request, before any browser. When a container has no route to
- * the internet, or DNS does not answer, the browser path reports it 45 seconds
- * later as "page.goto: Timeout exceeded" — which reads like a portal problem
- * and sends you looking at selectors. This takes a second and names the real
- * cause.
+ * DNS resolution plus a TCP connect, and deliberately NOTHING ELSE: no TLS
+ * handshake, no HTTP request.
+ *
+ * The first version of this check did a plain `fetch()` and rejected a
+ * perfectly healthy setup with `UNABLE_TO_VERIFY_LEAF_SIGNATURE`. That is not a
+ * connectivity problem: the portal serves an incomplete certificate chain, and
+ * browsers paper over it by fetching the missing intermediate themselves (AIA),
+ * while Node's TLS stack does not. The check was stricter than the browser it
+ * runs in front of — so it failed the session for something the browser handles
+ * without blinking.
+ *
+ * A pre-flight must never be able to refuse what the real path would accept.
+ * At the TCP layer there is nothing left to be wrong about: either the name
+ * resolves and the port answers, or the container really has no route out.
  */
-export async function assertPortalReachable(url = loginUrl(), timeoutMs = 15_000) {
-  try {
-    // Any status is a success here: 200, 302, even 403 all prove the host
-    // answered. Only a transport-level failure matters.
-    const response = await fetch(url, {
-      method: 'GET',
-      redirect: 'manual',
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    logger.info(`Portal reachable (HTTP ${response.status})`);
-  } catch (err) {
-    const cause = err.cause?.code ?? err.name;
-    throw new PortalError(
-      'PORTAL_UNREACHABLE',
-      `Cannot reach ${new URL(url).host} from the integration container (${cause}). ` +
-        'Check that the container has internet access and working DNS.',
+export async function assertPortalReachable(url = loginUrl(), timeoutMs = 10_000) {
+  const { hostname, port, protocol } = new URL(url);
+  const targetPort = Number(port) || (protocol === 'https:' ? 443 : 80);
+
+  await new Promise((resolve, reject) => {
+    const socket = createConnection({ host: hostname, port: targetPort });
+    const settle = (err) => {
+      socket.destroy();
+      if (err) {
+        reject(err);
+      } else {
+        resolve();
+      }
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => settle(null));
+    socket.once('timeout', () =>
+      settle(Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' })),
     );
+    socket.once('error', settle);
+  }).catch((err) => {
+    throw new PortalError('PORTAL_UNREACHABLE', explainConnectFailure(err, hostname, targetPort));
+  });
+
+  logger.info(`Portal reachable (TCP ${hostname}:${targetPort})`);
+}
+
+function explainConnectFailure(err, hostname, port) {
+  switch (err.code) {
+    case 'ENOTFOUND':
+    case 'EAI_AGAIN':
+      return `DNS cannot resolve ${hostname} from the integration container (${err.code}).`;
+    case 'ECONNREFUSED':
+      return `${hostname} refused the connection on port ${port}.`;
+    case 'ETIMEDOUT':
+      return `No answer from ${hostname}:${port} — the container has no route out, or something drops the traffic.`;
+    default:
+      return `Cannot open a connection to ${hostname}:${port} (${err.code ?? err.message}).`;
   }
 }
 

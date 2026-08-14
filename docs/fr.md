@@ -171,6 +171,11 @@ conteneur chez vous, et utilisés uniquement pour se connecter à
 - **La courbe s'arrête net à une date passée** : c'est le comportement attendu
   quand l'exploitant cesse de publier ; les jours manquants seront importés dès
   qu'ils apparaîtront sur le site.
+- **« Impossible de joindre connexion.leaudiledefrance.fr »** : le message
+  nomme la cause exacte — résolution DNS, connexion refusée, ou aucune réponse.
+  L'intégration ne vérifie que l'accès réseau brut, jamais le certificat : le
+  portail en sert un incomplet que les navigateurs réparent d'eux-mêmes, et un
+  contrôle plus strict que le navigateur refuserait une installation saine.
 - **« L'action a échoué. Vérifiez que l'intégration est démarrée. »** : Gladys
   accorde au maximum 120 secondes à un bouton pour répondre. L'intégration
   s'arrête d'elle-même avant cette limite pour vous renvoyer une vraie
