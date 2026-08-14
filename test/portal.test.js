@@ -11,9 +11,12 @@ import {
   DOWNLOAD_FILENAME,
   PortalError,
   decodeDataUri,
+  downloadHistoryCsv,
   historyUrlFrom,
   launchOptions,
+  resetSessionLock,
 } from '../src/sedif/portal.js';
+import { normalizeConfig } from '../src/config.js';
 
 const CSV = 'Date;Index;Consommation;Methode\n2026-08-08 00:00:00;1234414;114;Mesuré\n';
 
@@ -40,6 +43,58 @@ test('an href that is not a data URI is reported, not silently parsed', () => {
 test('the portal entry points are the ones documented for users', () => {
   assert.equal(DEFAULT_LOGIN_URL, 'https://connexion.leaudiledefrance.fr/s/login/');
   assert.equal(DOWNLOAD_FILENAME, 'historique_jours_litres.csv');
+});
+
+test('a launch that never returns is bounded, and frees the session lock', async () => {
+  // This is what took the integration down: the deadline only covered the page
+  // steps, so a browser launch that never came back held the lock forever. The
+  // action hit the 120 s ack timeout ("check that the integration is started")
+  // with no log line, and every refresh afterwards was "postponed".
+  resetSessionLock();
+  const config = normalizeConfig({ email: 'user@example.com', password: 'secret' });
+
+  await assert.rejects(
+    () =>
+      downloadHistoryCsv(config, { launchBrowser: () => new Promise(() => {}), deadlineMs: 50 }),
+    (err) => {
+      assert.equal(err.code, 'DEADLINE_EXCEEDED');
+      return true;
+    },
+  );
+
+  // The lock is free again: the next attempt fails on its own merits, not on
+  // a stale "a session is already running".
+  await assert.rejects(
+    () =>
+      downloadHistoryCsv(config, {
+        launchBrowser: () => Promise.reject(new Error('no browser here')),
+      }),
+    (err) => {
+      assert.notEqual(err.code, 'SESSION_BUSY');
+      assert.match(err.message, /no browser here/);
+      return true;
+    },
+  );
+});
+
+test('a second session is refused while the first is still running', async () => {
+  resetSessionLock();
+  const config = normalizeConfig({ email: 'user@example.com', password: 'secret' });
+  const hanging = downloadHistoryCsv(config, {
+    launchBrowser: () => new Promise(() => {}),
+    deadlineMs: 300,
+  });
+
+  await assert.rejects(
+    () => downloadHistoryCsv(config, { launchBrowser: () => new Promise(() => {}) }),
+    (err) => {
+      assert.equal(err.code, 'SESSION_BUSY');
+      return true;
+    },
+  );
+
+  await assert.rejects(() => hanging);
+  resetSessionLock();
 });
 
 test('the browser is launched as the full Chromium, not the headless shell', () => {

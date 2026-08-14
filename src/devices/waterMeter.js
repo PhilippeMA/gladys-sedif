@@ -141,6 +141,7 @@ export const waterMeter = {
 
   actions: {
     async test_connection(gladys, { config, deps = {} }) {
+      logger.info('Action test_connection requested');
       if (!isConfigured(config)) {
         return {
           en: 'Fill in the email address and the password first.',
@@ -165,6 +166,7 @@ export const waterMeter = {
     },
 
     async resync_history(gladys, { config, deps = {} }) {
+      logger.info('Action resync_history requested');
       await clearCursor(contractKey(config));
       const published = await importHistory(gladys, config, {
         deadlineMs: ACTION_DEADLINE_MS,

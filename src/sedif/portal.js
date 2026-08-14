@@ -84,16 +84,35 @@ export async function downloadHistoryCsv(config, deps = {}) {
   }
   sessionInFlight = true;
 
-  let browser;
-  try {
-    browser = await launchBrowser();
-  } catch (err) {
-    // Nothing is running: release the lock, or every later attempt is refused.
-    sessionInFlight = false;
-    throw err;
-  }
+  // Kept outside the deadline race so the browser can still be disposed of when
+  // the deadline fires while the launch itself is what is stuck.
+  let browserPromise = null;
+
+  const started = Date.now();
+  logger.info(`Starting a portal session (deadline ${Math.round(deadlineMs / 1000)} s)`);
 
   try {
+    return await withDeadline(runSession(), deadlineMs);
+  } finally {
+    sessionInFlight = false;
+    // Fire and forget: on the deadline path we must not wait on a promise that
+    // may never settle, but we must not leak the browser either.
+    browserPromise
+      ?.then((browser) => browser.close())
+      .catch((err) => logger.warn(`Closing the browser failed: ${err.message}`));
+    logger.info(`Portal session finished in ${Math.round((Date.now() - started) / 1000)} s`);
+  }
+
+  // EVERYTHING lives in here, launch included. An earlier version only put the
+  // page steps under the deadline, and a launch that never came back held the
+  // session lock forever: the button hit the 120 s ack timeout with not one log
+  // line to show for it, and the refreshes after it were all "postponed".
+  async function runSession() {
+    logger.info('Launching the browser...');
+    browserPromise = launchBrowser();
+    const browser = await browserPromise;
+    logger.info(`Browser up after ${Date.now() - started} ms`);
+
     const context = await browser.newContext({
       locale: 'fr-FR',
       timezoneId: 'Europe/Paris',
@@ -106,20 +125,15 @@ export async function downloadHistoryCsv(config, deps = {}) {
     );
 
     const page = await context.newPage();
-    const session = (async () => {
+    try {
       await signIn(page, config);
       await openHistoryPage(page, config);
-      return readCsvFromPage(page);
-    })();
-    // Whatever the session is stuck on, the browser dies at the deadline: the
-    // `finally` below closes it, which makes the abandoned session reject.
-    session.catch(() => {});
-    return await withDeadline(session, deadlineMs);
-  } finally {
-    // Always release the browser: a leaked Chromium would survive every refresh
-    // and eat the memory of the box within a day.
-    await browser.close().catch((err) => logger.warn('Closing the browser failed', err));
-    sessionInFlight = false;
+      return await readCsvFromPage(page);
+    } finally {
+      // Release the browser on the normal paths; the outer `finally` is only
+      // the safety net for the deadline.
+      await browser.close().catch(() => {});
+    }
   }
 }
 
@@ -315,6 +329,10 @@ export function launchOptions() {
     // doesn't exist". Against a Salesforce app, the full browser is also the
     // closest thing to what a real visitor runs.
     channel: 'chromium',
+    // Playwright's own launch budget. Generous, because a loaded home server
+    // starts Chromium slowly — but never unbounded, and always shorter than
+    // the session deadline that wraps it.
+    timeout: 60_000,
     // Overrides the binary for a local run. A DISTRO Chromium is NOT
     // interchangeable with Playwright's: their versions must match, or the
     // launch dies with a crashpad error and "Target page, context or browser
