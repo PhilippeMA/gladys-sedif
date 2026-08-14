@@ -30,7 +30,21 @@ values — 1 s to 1 minute, in **milliseconds** — and rejects the whole publis
 with `invalid poll frequency` otherwise. A meter the operator reads once a day,
 where every refresh costs a browser session, has no business on that clock.
 
-## How it gets the data, and why
+## Two sources, one pipeline
+
+`source` (config) picks where the CSV comes from:
+
+- **`portal`** — a headless browser signs in and exports it (below);
+- **`file`** — the user drops the export in `/data/import` and no browser runs
+  at all ([`src/sedif/file.js`](./src/sedif/file.js)).
+
+They are interchangeable on purpose: both hand back the raw portal CSV, and
+everything after that — parsing, cursor, dated backfill, batching — is the same
+code and produces the same device. The file source exists because a browser is
+not affordable everywhere: on the home server this was first deployed to,
+Chromium needed **42 seconds just to start**, before a single page was opened.
+
+## How the automatic source gets the data, and why
 
 Neither the SEDIF nor Veolia publishes an API for consumption data. The customer
 portal (`connexion.leaudiledefrance.fr`) is a Salesforce Experience Cloud site:
@@ -100,7 +114,7 @@ does not have yet:
 
 ```bash
 npm install
-npx playwright-core install --no-shell chromium   # NOT the distro Chromium
+npx playwright-core install --only-shell chromium  # NOT the distro Chromium
 GLADYS_HOST_API_URL="http://localhost:1443" \
 GLADYS_INTEGRATION_TOKEN="<token>" \
 GLADYS_INTEGRATION_SELECTOR="sedif" \
@@ -132,10 +146,14 @@ one so they always run.
 
 `check:browser` also runs inside the Docker build, so an image that ships the
 wrong browser fails to build instead of failing hours later on the user's box.
-Browser packaging is the one thing here that unit tests cannot see: the code
-asks for `channel: 'chromium'` (the full browser, new headless mode) and the
-image installs it with `--no-shell`. **Change one and you must change the
-other** — mismatch them and Playwright hunts for a binary that is not there.
+It really launches, because `chromium.executablePath({ channel })` ignores the
+channel and would happily confirm a binary the launch never uses. A _missing_
+executable fails the build; a present one that will not start is only a warning,
+since the arm64 image is built under QEMU emulation.
+
+Browser packaging is one decision written in two files: the code asks for
+`channel: 'chromium-headless-shell'` and the image installs it with
+`--only-shell`. **Change one and you must change the other.**
 
 What no test can cover: whether the selectors still match the live portal. Only
 a run against the real site, with real credentials, tells you that — the

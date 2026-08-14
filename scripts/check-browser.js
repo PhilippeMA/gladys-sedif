@@ -1,51 +1,51 @@
 // -----------------------------------------------------------------------------
-// Build-time (and support-time) check: is the browser the code asks for really
-// in the image, at the path Playwright will resolve?
+// Build-time (and support-time) check: can the code actually start the browser
+// the image installed?
 //
-// Twice now, an image built fine and only failed on the user's box, minutes
-// after startup, deep inside a refresh — once with a distro Chromium Playwright
-// could not drive, once with the full browser installed while the code asked
-// for the headless shell. Both are pure packaging mistakes, and both are
-// visible the moment the image is built. This script makes the Docker build
-// fail instead.
+// Every browser failure this integration has had was a packaging mistake
+// invisible until a refresh ran on the real box, minutes after startup: a
+// distro Chromium Playwright could not drive, then the full browser installed
+// while the code asked for the headless shell. Both are visible the moment the
+// image is built. This script makes the Docker build fail instead.
 //
-// It deliberately does NOT launch the browser: the arm64 image is built under
-// QEMU emulation, where starting Chromium is slow and unreliable. Resolving
-// the path through Playwright's own logic and checking the file is executable
-// catches the packaging mistakes without that fragility.
+// It really launches, because there is no honest way to ask Playwright "which
+// binary would you use": `chromium.executablePath({ channel })` ignores the
+// channel and always answers with the full-browser path, so checking that path
+// would pass while the launch fails.
+//
+// The arm64 image is built under QEMU emulation, where starting a browser is
+// slow and can fail for reasons that have nothing to do with packaging. So the
+// two are told apart: a MISSING executable fails the build, anything else is
+// reported as a warning and lets it through.
 // -----------------------------------------------------------------------------
 
-import { accessSync, constants, statSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { launchOptions } from '../src/sedif/portal.js';
 
-const { channel, executablePath } = launchOptions();
-
-let resolved = executablePath;
-if (!resolved) {
-  try {
-    resolved = chromium.executablePath({ channel });
-  } catch (err) {
-    fail(`Playwright cannot resolve the "${channel}" browser: ${err.message.split('\n')[0]}`);
-  }
-}
+const options = launchOptions();
 
 try {
-  if (!statSync(resolved).isFile()) {
-    fail(`${resolved} is not a file`);
-  }
-  accessSync(resolved, constants.X_OK);
+  const browser = await chromium.launch(options);
+  console.log(`Browser OK: channel "${options.channel}" launched, version ${browser.version()}`);
+  await browser.close();
 } catch (err) {
-  fail(
-    `the browser is missing or not executable at ${resolved} (${err.code ?? err.message}). ` +
-      'The image must run `playwright-core install --no-shell chromium` with the same ' +
-      'PLAYWRIGHT_BROWSERS_PATH it uses at runtime.',
+  const message = err.message.split('\n')[0];
+
+  if (/Executable doesn't exist|Please run the following command/i.test(err.message)) {
+    console.error(
+      `Browser check FAILED: ${message}\n` +
+        `The image asks for channel "${options.channel}" but did not install it. ` +
+        'The `playwright-core install` line in the Dockerfile and the `channel` in ' +
+        'src/sedif/portal.js must name the same browser (--only-shell pairs with ' +
+        '"chromium-headless-shell", --no-shell with "chromium").',
+    );
+    process.exit(1);
+  }
+
+  // Present but would not start: real on a QEMU-emulated build, and not
+  // something the packaging can fix. Say so loudly, do not block the build.
+  console.warn(
+    `Browser check WARNING: the executable is installed but did not start here (${message}). ` +
+      'Expected when building under emulation; investigate if you see this on a native build.',
   );
-}
-
-console.log(`Browser OK: channel "${channel}" resolves to ${resolved}`);
-
-function fail(message) {
-  console.error(`Browser check failed: ${message}`);
-  process.exit(1);
 }

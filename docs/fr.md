@@ -20,6 +20,55 @@ tracer les courbes et les utiliser dans des scènes) :
 | **Index du compteur**        | m³    | Le relevé total du compteur, celui qui figure sur votre facture. |
 | **Consommation quotidienne** | L     | Le volume consommé sur la journée.                               |
 
+## Deux façons de récupérer les relevés
+
+Le champ **« Origine des relevés »** propose deux modes, qui produisent
+exactement le même appareil et les mêmes courbes :
+
+### Automatique (navigateur sans interface)
+
+L'intégration se connecte elle-même à l'espace client. C'est le mode confortable :
+une fois configuré, vous n'avez plus rien à faire.
+
+Il a un coût : ouvrir un navigateur demande quelques centaines de mégaoctets de
+mémoire et plusieurs dizaines de secondes de processeur à chaque relevé. Sur une
+machine déjà chargée, cela ne passe pas — sur le serveur où cette intégration a
+été déployée la première fois, Chromium mettait **42 secondes rien qu'à
+démarrer**, avant même d'ouvrir une page. Si vos relevés échouent avec un
+message de délai dépassé, passez au mode ci-dessous.
+
+### Fichier CSV déposé
+
+Aucun navigateur, aucun identifiant : vous téléchargez le fichier depuis
+l'espace client, vous le déposez dans le dossier d'import de l'intégration, et
+elle s'occupe du reste.
+
+1. Sur [leaudiledefrance.fr](https://www.leaudiledefrance.fr/), ouvrez la page
+   **Historique**, choisissez l'affichage **Litres** puis **Jours**, et cliquez
+   sur **Télécharger la période**. Vous obtenez `historique_jours_litres.csv`.
+2. Déposez ce fichier dans le dossier `/data/import` du conteneur de
+   l'intégration :
+
+   ```bash
+   # Repérez le conteneur (son nom contient "sedif")
+   docker ps --format '{{.Names}}' | grep sedif
+
+   # Copiez le fichier dedans
+   docker cp historique_jours_litres.csv <nom-du-conteneur>:/data/import/
+   ```
+
+3. Cliquez sur **Tester la connexion** pour vérifier la lecture, puis sur
+   **Réimporter l'historique** pour l'intégrer immédiatement. Sinon, le
+   prochain relevé automatique s'en chargera.
+
+Vous pouvez déposer **plusieurs fichiers** : ils sont tous lus et fusionnés. Un
+export de juillet à côté d'un export d'août rallonge simplement l'historique.
+Les fichiers ne sont jamais supprimés, et redéposer deux fois le même n'a aucun
+effet — le curseur d'import sait déjà ce que Gladys possède.
+
+C'est le mode à choisir si votre machine est modeste, ou si vous préférez que
+rien ne se connecte à votre espace client sans vous.
+
 ## Prérequis
 
 - Un compte sur [leaudiledefrance.fr](https://www.leaudiledefrance.fr/), avec un

@@ -40,7 +40,7 @@ jobs:
       # tests silently skip, and the fragile half of the integration would go
       # unchecked on every pull request.
       - name: Install Chromium
-        run: npx playwright-core install --with-deps --no-shell chromium
+        run: npx playwright-core install --with-deps --only-shell chromium
 
       # Same check the Docker build runs: the browser the code asks for must be
       # the one that got installed. Cheap here, and it catches the packaging

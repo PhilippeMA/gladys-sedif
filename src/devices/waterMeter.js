@@ -141,11 +141,11 @@ export const waterMeter = {
 
   actions: {
     async test_connection(gladys, { config, deps = {} }) {
-      logger.info('Action test_connection requested');
+      logger.info(`Action test_connection requested (source: ${config.source})`);
       if (!isConfigured(config)) {
         return {
-          en: 'Fill in the email address and the password first.',
-          fr: "Renseignez d'abord l'adresse e-mail et le mot de passe.",
+          en: 'Fill in the email address and the password first, or switch the source to the dropped CSV file.',
+          fr: "Renseignez d'abord l'adresse e-mail et le mot de passe, ou basculez la source sur le fichier CSV déposé.",
         };
       }
       const { readings, latest } = await fetchHistory(config, {

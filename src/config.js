@@ -14,6 +14,10 @@
 // Defaults: they MUST stay consistent with the `default` values declared in the
 // `config_schema` of the manifest (a unit test enforces it).
 export const DEFAULT_CONFIG = {
+  // 'portal': sign in with a headless browser. 'file': read the CSV the user
+  // dropped in the import folder — no browser, for machines that cannot afford
+  // one (see src/sedif/file.js).
+  source: 'portal',
   email: '',
   password: '',
   contract: '',
@@ -31,6 +35,7 @@ export function normalizeConfig(raw = {}) {
   return {
     ...DEFAULT_CONFIG,
     ...raw,
+    source: raw.source === 'file' ? 'file' : DEFAULT_CONFIG.source,
     email: String(raw.email ?? DEFAULT_CONFIG.email).trim(),
     password: String(raw.password ?? DEFAULT_CONFIG.password),
     contract: String(raw.contract ?? DEFAULT_CONFIG.contract).trim(),
@@ -48,6 +53,11 @@ export function normalizeConfig(raw = {}) {
  * Until the user fills the form in, polling would only produce failed logins.
  */
 export function isConfigured(config) {
+  // The dropped-file source needs no account at all: the user already did the
+  // signing in, by hand, in their own browser.
+  if (config.source === 'file') {
+    return true;
+  }
   return config.email.length > 0 && config.password.length > 0;
 }
 

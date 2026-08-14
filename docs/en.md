@@ -20,6 +20,52 @@ chart them and use them in scenes:
 | **Meter index**       | m³   | The total meter reading, the one printed on your bill. |
 | **Daily consumption** | L    | The volume used over that day.                         |
 
+## Two ways to get the readings
+
+The **"Where the readings come from"** setting offers two modes. Both produce
+exactly the same device and the same charts.
+
+### Automatic (headless browser)
+
+The integration signs in to the customer portal by itself. This is the
+comfortable mode: configure it once and forget it.
+
+It has a cost: opening a browser takes a few hundred megabytes of memory and
+tens of seconds of CPU per reading. On an already busy machine it does not fit
+— on the home server this was first deployed to, Chromium needed **42 seconds
+just to start**, before opening a single page. If your readings fail with a
+deadline message, switch to the mode below.
+
+### Dropped CSV file
+
+No browser, no credentials: you download the file from the portal yourself,
+drop it in the integration's import folder, and it takes care of the rest.
+
+1. On [leaudiledefrance.fr](https://www.leaudiledefrance.fr/), open the
+   **Historique** page, pick the **Litres** then **Jours** view, and click
+   **Télécharger la période**. You get `historique_jours_litres.csv`.
+2. Drop that file into the `/data/import` folder of the integration container:
+
+   ```bash
+   # Find the container (its name contains "sedif")
+   docker ps --format '{{.Names}}' | grep sedif
+
+   # Copy the file into it
+   docker cp historique_jours_litres.csv <container-name>:/data/import/
+   ```
+
+3. Click **Test the connection** to check it reads, then **Re-import the
+   history** to bring it in right away. Otherwise the next scheduled refresh
+   picks it up.
+
+You can drop **several files**: they are all read and merged. A July export
+next to an August one simply extends the history. Files are never deleted, and
+dropping the same one twice does nothing — the import cursor already knows what
+Gladys has.
+
+Choose this mode if your machine is modest, or if you would rather nothing
+signed in to your customer account without you.
+
 ## Requirements
 
 - An account on [leaudiledefrance.fr](https://www.leaudiledefrance.fr/) with an

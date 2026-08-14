@@ -6,6 +6,7 @@
 
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { downloadHistoryCsv } from './portal.js';
+import { readDroppedCsv } from './file.js';
 import { latestReading, parseHistoryCsv } from './csv.js';
 
 const logger = createLogger({ name: 'sedif' });
@@ -22,7 +23,10 @@ export { latestReading, litersToCubicMeters, parseHistoryCsv, selectNewReadings 
  * @returns {Promise<{ readings: import('./csv.js').Reading[], latest: import('./csv.js').Reading|null }>}
  */
 export async function fetchHistory(config, deps = {}) {
-  const download = deps.download ?? downloadHistoryCsv;
+  // The two sources are interchangeable by design: both hand back the raw CSV
+  // the portal produces, and everything after this line is identical.
+  const download =
+    deps.download ?? (config.source === 'file' ? readDroppedCsv : downloadHistoryCsv);
 
   const started = Date.now();
   // `deps` carries the session budget (deadlineMs) as well as the test seam.

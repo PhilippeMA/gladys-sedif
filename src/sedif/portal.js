@@ -322,13 +322,17 @@ export function historyUrlFrom(currentUrl) {
  */
 export function launchOptions() {
   return {
-    // `channel: 'chromium'` selects the FULL browser in new-headless mode.
-    // Without it, `headless: true` looks for `chromium_headless_shell-<rev>`
-    // — the separate old-headless binary, which the image deliberately does
-    // not install (`--no-shell`), and the launch fails with "Executable
-    // doesn't exist". Against a Salesforce app, the full browser is also the
-    // closest thing to what a real visitor runs.
-    channel: 'chromium',
+    // The headless shell, explicitly. It pairs with `--only-shell` in the
+    // Dockerfile: the channel names the binary, and naming it is what keeps
+    // the code and the image from drifting apart (`headless: true` alone
+    // resolves the shell, but silently, which is how they drifted before).
+    //
+    // The shell over the full browser is a deliberate downgrade: measured
+    // here, it starts 3 to 5 times faster and takes 274 MB less on disk, and
+    // on the box this actually runs on the FULL browser needed 42 s just to
+    // start. Fidelity to a real visitor is worth little on a machine that
+    // cannot afford the browser at all.
+    channel: 'chromium-headless-shell',
     // Playwright's own launch budget. Generous, because a loaded home server
     // starts Chromium slowly — but never unbounded, and always shorter than
     // the session deadline that wraps it.

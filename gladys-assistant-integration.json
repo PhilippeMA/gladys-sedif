@@ -32,25 +32,50 @@
       ]
     },
     {
+      "key": "source",
+      "type": "select",
+      "display": "radio",
+      "label": { "en": "Where the readings come from", "fr": "Origine des relevés" },
+      "description": {
+        "en": "Automatic drives a headless browser and needs a machine that can afford one (count a few hundred MB of memory per reading). Dropped file needs no browser and no credentials: you download the CSV from the portal yourself and put it in the integration's import folder. Both produce exactly the same device and the same charts.",
+        "fr": "Automatique pilote un navigateur sans interface et demande une machine qui peut se le permettre (quelques centaines de Mo de mémoire par relevé). Fichier déposé ne demande ni navigateur ni identifiants : vous téléchargez vous-même le CSV depuis l'espace client et le déposez dans le dossier d'import de l'intégration. Les deux produisent exactement le même appareil et les mêmes courbes."
+      },
+      "required": false,
+      "default": "portal",
+      "options": [
+        {
+          "value": "portal",
+          "label": {
+            "en": "Automatic (headless browser)",
+            "fr": "Automatique (navigateur sans interface)"
+          }
+        },
+        {
+          "value": "file",
+          "label": { "en": "Dropped CSV file", "fr": "Fichier CSV déposé" }
+        }
+      ]
+    },
+    {
       "key": "email",
       "type": "string",
       "label": { "en": "Email address", "fr": "Adresse e-mail" },
       "description": {
-        "en": "The email address of your leaudiledefrance.fr account.",
-        "fr": "L'adresse e-mail de votre compte leaudiledefrance.fr."
+        "en": "The email address of your leaudiledefrance.fr account. Only used by the automatic source; leave empty if you drop the file yourself.",
+        "fr": "L'adresse e-mail de votre compte leaudiledefrance.fr. Utilisée uniquement par la source automatique ; laissez vide si vous déposez le fichier vous-même."
       },
       "placeholder": { "en": "you@example.com", "fr": "vous@exemple.com" },
-      "required": true
+      "required": false
     },
     {
       "key": "password",
       "type": "secret",
       "label": { "en": "Password", "fr": "Mot de passe" },
       "description": {
-        "en": "The password of your leaudiledefrance.fr account. Stored encrypted by Gladys and never sent back to the browser.",
-        "fr": "Le mot de passe de votre compte leaudiledefrance.fr. Stocké chiffré par Gladys et jamais renvoyé au navigateur."
+        "en": "The password of your leaudiledefrance.fr account. Stored encrypted by Gladys, never sent back to the browser, and only used by the automatic source.",
+        "fr": "Le mot de passe de votre compte leaudiledefrance.fr. Stocké chiffré par Gladys, jamais renvoyé au navigateur, et utilisé uniquement par la source automatique."
       },
-      "required": true
+      "required": false
     },
     {
       "key": "contract",

@@ -97,14 +97,14 @@ test('a second session is refused while the first is still running', async () =>
   resetSessionLock();
 });
 
-test('the browser is launched as the full Chromium, not the headless shell', () => {
-  // This is what broke in production: `headless: true` alone makes Playwright
-  // look for `chromium_headless_shell-<rev>`, a separate binary the image does
-  // not install, and the launch fails before reaching the portal. The channel
-  // is what selects the full browser the Dockerfile actually ships.
+test('the browser channel names the binary the image installs', () => {
+  // The channel and the Dockerfile's `playwright-core install` flag are one
+  // decision written in two files. `headless: true` alone resolves the shell
+  // silently, which is exactly how they drifted apart in production.
   const options = launchOptions();
-  assert.equal(options.channel, 'chromium');
+  assert.equal(options.channel, 'chromium-headless-shell');
   assert.equal(options.headless, true);
+  assert.ok(options.timeout > 0, 'the launch itself must be bounded');
 });
 
 test('the browser gets the flags a read-only, shm-less container needs', () => {

@@ -20,12 +20,12 @@
 # `playwright-core` in package.json; `--with-deps` pulls in the system
 # libraries and fonts it needs.
 #
-# `--no-shell` keeps the FULL browser rather than the lighter headless shell:
-# the portal is a Salesforce app, and the full build in new-headless mode is
-# the closest thing to what a real visitor runs. Worth the extra megabytes.
-# This pairs with `channel: 'chromium'` in src/sedif/portal.js — WITHOUT it,
-# `headless: true` hunts for the headless shell this line does not install and
-# the launch fails with "Executable doesn't exist". Change one, change both.
+# `--only-shell` installs the headless shell and NOT the full browser: 274 MB
+# less on disk and a launch measured 3 to 5 times faster. That matters more
+# than fidelity to a real visitor here — on a loaded home server the full
+# browser took 42 s just to start, which no reasonable deadline survives.
+# This pairs with `channel: 'chromium-headless-shell'` in src/sedif/portal.js.
+# Change one, change both — scripts/check-browser.js enforces it at build time.
 # -----------------------------------------------------------------------------
 
 FROM node:24-bookworm-slim
@@ -44,7 +44,7 @@ RUN npm ci --omit=dev || npm install --omit=dev
 # Browsers outside the default per-user cache: the build runs as root, the
 # container runs as `node`, and ~/.cache would not be the same directory.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npx playwright-core install --with-deps --no-shell chromium \
+RUN npx playwright-core install --with-deps --only-shell chromium \
   && rm -rf /var/lib/apt/lists/* \
   && chmod -R a+rX /ms-playwright
 

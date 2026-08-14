@@ -56,10 +56,22 @@ test('every value field of the manifest is known to the code', () => {
 test('the password is a secret field, never a plain string', () => {
   const password = manifest.config_schema.find((f) => f.key === 'password');
   assert.equal(password.type, 'secret');
-  assert.equal(password.required, true);
+  // NOT required: the dropped-file source needs no account, and a required
+  // field would keep those users from ever saving the form. `isConfigured()`
+  // is what decides, per source.
+  assert.notEqual(password.required, true);
   // `secret` fields are never sent back to the frontend, so they cannot carry
   // a default — the manifest is rejected otherwise.
   assert.equal(password.default, undefined);
+});
+
+test('the source select offers exactly the two the code implements', () => {
+  const source = manifest.config_schema.find((f) => f.key === 'source');
+  assert.deepEqual(
+    source.options.map((o) => o.value),
+    ['portal', 'file'],
+  );
+  assert.equal(source.default, DEFAULT_CONFIG.source);
 });
 
 test('the numeric bounds of the manifest match the clamping done in config.js', () => {
