@@ -31,7 +31,9 @@ test('parses the daily export', () => {
     readings.map((r) => r.date),
     ['2026-08-05', '2026-08-06', '2026-08-07', '2026-08-08'],
   );
-  assert.equal(readings[0].indexLiters, 1234000);
+  // The CSV gives litres; the shared Reading shape carries m³ so the API and
+  // the file source feed the same device.
+  assert.equal(readings[0].indexCubicMeters, 1234);
   assert.equal(readings[0].consumptionLiters, 120);
   assert.equal(readings[0].estimated, false);
   assert.equal(readings[2].estimated, true);
@@ -59,7 +61,7 @@ test('accepts the DD/MM/YYYY dates of the monthly export', () => {
 
 test('tolerates thousand separators and a decimal comma', () => {
   const [reading] = parseHistoryCsv('2026-08-08 00:00:00;1 234 414;114,0;Mesuré');
-  assert.equal(reading.indexLiters, 1234414);
+  assert.equal(reading.indexCubicMeters, 1234.414);
   assert.equal(reading.consumptionLiters, 114);
 });
 

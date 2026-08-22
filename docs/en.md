@@ -20,31 +20,56 @@ chart them and use them in scenes:
 | **Meter index**       | m³   | The total meter reading, the one printed on your bill. |
 | **Daily consumption** | L    | The volume used over that day.                         |
 
+## Requirements
+
+- An account on [leaudiledefrance.fr](https://www.leaudiledefrance.fr/) with an
+  active contract. It is the same account you use to read your bills.
+- A remotely-read (télérelevé) meter. SEDIF has rolled these out broadly, but if
+  yours is not one of them the portal shows no daily history and the integration
+  has nothing to import.
+- Check **before installing** that the "Historique" page of your customer
+  account does show a daily curve. If it is empty on the website, it will be
+  empty in Gladys too.
+
+## Configuration
+
+| Field                          | Purpose                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------- |
+| **Where readings come from**   | Automatic (default) or a dropped CSV file. See below.                                       |
+| **Email address**              | The login of your customer account. Not needed in dropped-file mode.                        |
+| **Password**                   | The password of that same account. Encrypted by Gladys, never sent back to the frontend.    |
+| **Contract number**            | Only needed if your account holds several contracts. It is printed on your bill.            |
+| **Refresh interval**           | 6 hours by default. The meter is only read once a day, so a shorter interval gains nothing. |
+| **History to import**          | How many days the first import goes back. 30 days by default, up to 3 years.                |
+| **Include estimated readings** | Off by default. See "Measured and estimated readings".                                      |
+
+Once the fields are filled in, use the **Test the connection** button: it really
+signs in and reports the latest available reading. It is the fastest way to
+check your credentials.
+
+The **Re-import the history** button forgets the import cursor and publishes the
+whole configured period again. Use it after changing "History to import", or if
+you deleted data in Gladys.
+
 ## Two ways to get the readings
 
-The **"Where the readings come from"** setting offers two modes. Both produce
-exactly the same device and the same charts.
+Both modes produce exactly the same device and the same charts.
 
-### Automatic (headless browser)
+### Automatic — recommended
 
-The integration signs in to the customer portal by itself. This is the
-comfortable mode: configure it once and forget it.
-
-It has a cost: opening a browser takes a few hundred megabytes of memory and
-tens of seconds of CPU per reading. On an already busy machine it does not fit
-— on the home server this was first deployed to, Chromium needed **42 seconds
-just to start**, before opening a single page. If your readings fail with a
-deadline message, switch to the mode below.
+The integration signs in to your customer account and reads its history. A
+handful of HTTP requests every six hours: no browser, a few megabytes of
+memory, negligible even on a Raspberry Pi.
 
 ### Dropped CSV file
 
-No browser, no credentials: you download the file from the portal yourself,
-drop it in the integration's import folder, and it takes care of the rest.
+No credentials at all: you download the file from the portal yourself, drop it
+in the integration's import folder, and it takes care of the rest.
 
 1. On [leaudiledefrance.fr](https://www.leaudiledefrance.fr/), open the
    **Historique** page, pick the **Litres** then **Jours** view, and click
    **Télécharger la période**. You get `historique_jours_litres.csv`.
-2. Drop that file into the `/data/import` folder of the integration container:
+2. Drop that file into `/data/import` in the integration container:
 
    ```bash
    # Find the container (its name contains "sedif")
@@ -54,49 +79,15 @@ drop it in the integration's import folder, and it takes care of the rest.
    docker cp historique_jours_litres.csv <container-name>:/data/import/
    ```
 
-3. Click **Test the connection** to check it reads, then **Re-import the
-   history** to bring it in right away. Otherwise the next scheduled refresh
-   picks it up.
+3. Click **Test the connection**, then **Re-import the history**.
 
-You can drop **several files**: they are all read and merged. A July export
-next to an August one simply extends the history. Files are never deleted, and
+You can drop **several files**: they are all read and merged. A July export next
+to an August one simply extends the history. Files are never deleted, and
 dropping the same one twice does nothing — the import cursor already knows what
 Gladys has.
 
-Choose this mode if your machine is modest, or if you would rather nothing
-signed in to your customer account without you.
-
-## Requirements
-
-- An account on [leaudiledefrance.fr](https://www.leaudiledefrance.fr/) with an
-  active contract. It is the same account you use to read your bills.
-- A remotely-read (télérelevé) meter. SEDIF has rolled these out broadly, but if
-  yours is not one of them the portal shows no daily history and the integration
-  has nothing to import.
-- Check **before installing** that the "Historique" page of your customer
-  account does show a daily curve in litres. If it is empty on the website, it
-  will be empty in Gladys too.
-
-## Configuration
-
-| Field                          | Purpose                                                                                                    |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| **Email address**              | The login of your customer account.                                                                        |
-| **Password**                   | The password of that same account. Encrypted by Gladys, never sent back to your browser.                   |
-| **Contract number**            | Only needed if your account holds several contracts (several homes). It is printed on your bill.           |
-| **Refresh interval**           | 6 hours by default. The meter is only read once a day, so a shorter interval gains nothing.                |
-| **History to import**          | How many days the first import goes back. 30 days by default, up to 3 years.                               |
-| **Include estimated readings** | Off by default. See "Measured and estimated readings" below.                                               |
-| **History page URL**           | Leave empty. Only useful if the operator moves its history page and the integration can no longer find it. |
-
-Once the fields are filled in, use the **Test the connection** button: it really
-signs in to the portal and reports the latest available reading. It is the
-fastest way to check your credentials without waiting for the first automatic
-poll.
-
-The **Re-import the history** button forgets the import cursor and publishes the
-whole configured period again. Use it after changing "History to import", or if
-you deleted data in Gladys.
+Choose this mode if you would rather nothing signed in to your customer account
+without you, or if the automatic mode breaks.
 
 ## Data delay
 
@@ -106,14 +97,13 @@ the day before yesterday's consumption, not the current minute. That is a limit
 of the service, not of the integration.
 
 Every reading is published in Gladys **at its actual date**, not at the date of
-the import: your consumption chart is correctly dated, including the history
-picked up on the very first run.
+the import: your chart is correctly dated, including the history picked up on
+the very first run.
 
-The integration paces its own refresh instead of using the Gladys polling
-mechanism, which never goes slower than once a minute — far too fast for a
-daily value that costs a browser session to fetch. A first refresh runs about
-fifteen seconds after startup and after every configuration change, then at the
-interval you chose.
+The integration paces itself rather than using the Gladys polling mechanism,
+which never goes slower than once a minute — far too fast for a daily value. A
+first refresh runs about a minute after startup and after every configuration
+change, then at the interval you chose.
 
 ## Measured and estimated readings
 
@@ -129,19 +119,16 @@ there if you would rather have a continuous chart than an exact one.
 
 ## How the data is retrieved
 
-Neither SEDIF nor its operator publishes an API for consumption data. The
-customer portal is a Salesforce site whose exchanges are signed and change with
-every release of the site.
+Neither SEDIF nor its operator publishes a documented API. The customer portal
+is a Salesforce site, and the integration speaks the same protocol its own pages
+speak: it signs in, lists your contracts, reads the meter of the contract, then
+asks for the daily history. Exactly the exchanges your browser makes when you
+open the "Historique" page.
 
-So this integration does what you would do by hand: it opens a headless browser
-(Chromium), signs in with your credentials, opens the "Historique" page, selects
-the daily view in litres, and reads the CSV produced by the download button. The
-file is never written to disk — it is read straight out of the page.
-
-**A consequence worth knowing:** this approach depends on the structure of the
-website's pages. If the operator redesigns the portal, the integration can stop
-working overnight until it is updated. The device badge then turns orange, and
-the integration logs (`docker logs`) name the step that failed.
+**A consequence worth knowing:** that protocol is not a commitment from the
+operator. A redesign of the portal can change it, and the integration would stop
+working until it is updated. The device badge turns orange and the error names
+the step that failed. The dropped-file mode remains available in the meantime.
 
 ## Your credentials
 
@@ -152,57 +139,19 @@ party service is contacted.
 
 ## Troubleshooting
 
-- **"Test the connection" reports refused credentials**: check them by signing
-  in by hand on the website. An account can also be temporarily locked after
-  several failed attempts.
-- **No data after several hours**: open the "Historique" page of your customer
-  account. If it shows no daily curve, your meter is most likely not remotely
-  read.
-- **The device badge is orange**: either the last import failed, or the operator
-  has published nothing for more than four days. The badge tooltip gives the
-  reason.
+- **Credentials refused**: check them by signing in by hand on the website. An
+  account can also be temporarily locked after several failed attempts.
+- **"No meter attached to contract"**: your meter is most likely not remotely
+  read, so the portal has no daily history to give.
+- **"Contract X is not among the active ones"**: the message lists the contracts
+  it found; copy one of them, or empty the field to use the account's only
+  contract.
+- **An error naming an `LTN...` class**: the operator changed its application.
+  That is the case that needs an update of the integration; switch to "Dropped
+  CSV file" in the meantime.
+- **The device badge is orange**: either the last refresh failed, or the
+  operator has published nothing for more than four days. The badge tooltip
+  gives the reason.
 - **The chart stops at a past date**: that is the expected behaviour when the
   operator stops publishing; the missing days are imported as soon as they show
-  up on the website.
-- **"Cannot reach connexion.leaudiledefrance.fr"**: the message names the
-  exact cause — DNS resolution, refused connection, or no answer at all. The
-  integration only ever checks raw network reach, never the certificate: the
-  portal serves an incomplete chain that browsers repair by themselves, and a
-  check stricter than the browser would reject a perfectly healthy setup.
-- **"The action failed. Check that the integration is started."**: Gladys gives
-  a button 120 seconds at most to answer. The integration gives up before that
-  to send you a real explanation, so if you still get this generic message the
-  container has stopped answering entirely — check its logs.
-
-## When the automatic source fails
-
-Whenever a browser step fails, the integration **photographs the page** before
-closing it. The error shown in Gladys already carries the essentials: the URL,
-the page title, how many login fields were found, and the start of the visible
-text. That is often enough to understand it (a waiting page, a cookie banner, a
-locked account, the site under maintenance).
-
-To go further, a screenshot and the full HTML are written to
-`/data/diagnostics` in the container, keeping the last six failures:
-
-```bash
-docker cp <container-name>:/data/diagnostics ./diagnostics-sedif
-```
-
-Open the `.png`: you see exactly what the browser saw.
-
-## Machine load
-
-Opening a browser is expensive: a few hundred megabytes of memory and tens of
-seconds of CPU per reading. That is why the default interval is 6 hours and the
-minimum is one hour.
-
-The integration never opens two browsers at once: click a button while a
-scheduled reading is running and the second one refuses to start and says so.
-Each session also has a hard time limit after which the browser is killed, so a
-stuck page cannot leave a Chromium running forever.
-
-If your machine stays loaded while the integration is installed, stop it from
-Gladys: the load should drop immediately. If it does not, it comes from
-something else — building the Docker image, for one, is far heavier than
-running it.
+  up.

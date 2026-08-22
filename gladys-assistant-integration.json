@@ -17,8 +17,8 @@
       "type": "section",
       "label": { "en": "Before you start", "fr": "Avant de commencer" },
       "description": {
-        "en": "The SEDIF (Syndicat des Eaux d'Île-de-France) publishes no public API: this integration signs in to your customer account on leaudiledefrance.fr with a headless browser, exactly like you would, and reads the daily consumption history of your water meter. Use the credentials of your personal account. Readings are published once a day by the operator, with a one to two day delay.",
-        "fr": "Le SEDIF (Syndicat des Eaux d'Île-de-France) ne publie aucune API publique : cette intégration se connecte à votre espace client leaudiledefrance.fr avec un navigateur sans interface, exactement comme vous le feriez, et lit l'historique de consommation quotidienne de votre compteur. Utilisez les identifiants de votre espace personnel. Les relevés sont publiés une fois par jour par l'exploitant, avec un à deux jours de décalage."
+        "en": "This integration signs in to your leaudiledefrance.fr customer account and reads the daily consumption history of your water meter, the same one the Historique page shows. Use the credentials of your personal account. Readings are published once a day by the operator, with a one to two day delay.",
+        "fr": "Cette intégration se connecte à votre espace client leaudiledefrance.fr et lit l'historique de consommation quotidienne de votre compteur, celui qu'affiche la page Historique. Utilisez les identifiants de votre espace personnel. Les relevés sont publiés une fois par jour par l'exploitant, avec un à deux jours de décalage."
       },
       "links": [
         {
@@ -37,18 +37,15 @@
       "display": "radio",
       "label": { "en": "Where the readings come from", "fr": "Origine des relevés" },
       "description": {
-        "en": "Automatic drives a headless browser and needs a machine that can afford one (count a few hundred MB of memory per reading). Dropped file needs no browser and no credentials: you download the CSV from the portal yourself and put it in the integration's import folder. Both produce exactly the same device and the same charts.",
-        "fr": "Automatique pilote un navigateur sans interface et demande une machine qui peut se le permettre (quelques centaines de Mo de mémoire par relevé). Fichier déposé ne demande ni navigateur ni identifiants : vous téléchargez vous-même le CSV depuis l'espace client et le déposez dans le dossier d'import de l'intégration. Les deux produisent exactement le même appareil et les mêmes courbes."
+        "en": "Automatic signs in and reads the portal's own API — a handful of HTTP requests, no browser, light enough for any machine. Dropped file needs no credentials at all: you download the CSV from the portal yourself and put it in the integration's import folder. Both produce exactly the same device and the same charts.",
+        "fr": "Automatique se connecte et lit l'API de l'espace client — quelques requêtes HTTP, sans navigateur, léger pour n'importe quelle machine. Fichier déposé ne demande aucun identifiant : vous téléchargez vous-même le CSV depuis l'espace client et le déposez dans le dossier d'import de l'intégration. Les deux produisent exactement le même appareil et les mêmes courbes."
       },
       "required": false,
-      "default": "portal",
+      "default": "api",
       "options": [
         {
-          "value": "portal",
-          "label": {
-            "en": "Automatic (headless browser)",
-            "fr": "Automatique (navigateur sans interface)"
-          }
+          "value": "api",
+          "label": { "en": "Automatic (portal API)", "fr": "Automatique (API de l'espace client)" }
         },
         {
           "value": "file",
@@ -72,8 +69,8 @@
       "type": "secret",
       "label": { "en": "Password", "fr": "Mot de passe" },
       "description": {
-        "en": "The password of your leaudiledefrance.fr account. Stored encrypted by Gladys, never sent back to the browser, and only used by the automatic source.",
-        "fr": "Le mot de passe de votre compte leaudiledefrance.fr. Stocké chiffré par Gladys, jamais renvoyé au navigateur, et utilisé uniquement par la source automatique."
+        "en": "The password of your leaudiledefrance.fr account. Stored encrypted by Gladys, never sent back to the frontend, and only used by the automatic source.",
+        "fr": "Le mot de passe de votre compte leaudiledefrance.fr. Stocké chiffré par Gladys, jamais renvoyé à l'interface, et utilisé uniquement par la source automatique."
       },
       "required": false
     },
@@ -93,8 +90,8 @@
       "type": "number",
       "label": { "en": "Refresh interval (s)", "fr": "Intervalle de rafraîchissement (s)" },
       "description": {
-        "en": "How often the portal is queried, in seconds. The meter is read once a day: there is nothing to gain from a short interval, and each check drives a full browser session.",
-        "fr": "Fréquence d'interrogation de l'espace client, en secondes. Le compteur n'est relevé qu'une fois par jour : un intervalle court n'apporte rien et chaque relevé lance une session de navigateur complète."
+        "en": "How often the portal is queried, in seconds. The meter is read once a day, so there is nothing to gain from a short interval.",
+        "fr": "Fréquence d'interrogation de l'espace client, en secondes. Le compteur n'est relevé qu'une fois par jour : un intervalle court n'apporte rien."
       },
       "required": false,
       "default": 21600,
@@ -120,16 +117,6 @@
       },
       "required": false,
       "default": false
-    },
-    {
-      "key": "history_url",
-      "type": "string",
-      "label": { "en": "History page URL (advanced)", "fr": "URL de la page Historique (avancé)" },
-      "description": {
-        "en": "Leave empty. Only fill this in if the portal moved its consumption history page and the integration can no longer find it.",
-        "fr": "Laissez vide. À renseigner uniquement si l'espace client a déplacé sa page d'historique de consommation et que l'intégration ne la trouve plus."
-      },
-      "required": false
     }
   ],
   "actions": [
@@ -137,8 +124,8 @@
       "key": "test_connection",
       "label": { "en": "Test the connection", "fr": "Tester la connexion" },
       "description": {
-        "en": "Signs in to the portal and reads the latest available meter reading.",
-        "fr": "Se connecte à l'espace client et lit le dernier relevé disponible."
+        "en": "Signs in and reads the latest available meter reading.",
+        "fr": "Se connecte et lit le dernier relevé disponible."
       },
       "timeout_seconds": 120
     },

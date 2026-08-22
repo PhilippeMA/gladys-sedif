@@ -20,34 +20,57 @@ tracer les courbes et les utiliser dans des scènes) :
 | **Index du compteur**        | m³    | Le relevé total du compteur, celui qui figure sur votre facture. |
 | **Consommation quotidienne** | L     | Le volume consommé sur la journée.                               |
 
+## Prérequis
+
+- Un compte sur [leaudiledefrance.fr](https://www.leaudiledefrance.fr/), avec un
+  contrat actif. C'est le même compte que celui utilisé pour consulter vos
+  factures.
+- Un compteur télérelevé. Le SEDIF a généralisé le télérelevé, mais si votre
+  compteur ne l'est pas encore, l'espace client n'affiche pas d'historique
+  quotidien et l'intégration n'aura rien à importer.
+- Vérifiez **avant l'installation** que la page « Historique » de votre espace
+  client affiche bien une courbe quotidienne. Si elle est vide côté site, elle
+  le sera aussi côté Gladys.
+
+## Configuration
+
+| Champ                              | Rôle                                                                                                               |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Origine des relevés**            | Automatique (par défaut) ou fichier CSV déposé. Voir ci-dessous.                                                   |
+| **Adresse e-mail**                 | L'identifiant de votre espace client. Inutile en mode fichier déposé.                                              |
+| **Mot de passe**                   | Le mot de passe du même compte. Chiffré par Gladys, jamais renvoyé à l'interface.                                  |
+| **Numéro de contrat**              | À renseigner uniquement si votre compte porte plusieurs contrats. Il figure sur votre facture.                     |
+| **Intervalle de rafraîchissement** | Par défaut 6 heures. Le compteur n'étant relevé qu'une fois par jour, il n'y a rien à gagner à descendre plus bas. |
+| **Historique à importer**          | Nombre de jours repris lors du premier import. 30 jours par défaut, jusqu'à 3 ans.                                 |
+| **Inclure les relevés estimés**    | Désactivé par défaut. Voir « Relevés mesurés et estimés ».                                                         |
+
+Une fois les champs remplis, utilisez le bouton **Tester la connexion** : il se
+connecte réellement et vous renvoie le dernier relevé disponible. C'est le moyen
+le plus rapide de vérifier vos identifiants.
+
+Le bouton **Réimporter l'historique** oublie le curseur d'import et republie
+toute la période configurée. Il sert après un changement de la valeur
+« Historique à importer », ou si vous avez supprimé des données dans Gladys.
+
 ## Deux façons de récupérer les relevés
 
-Le champ **« Origine des relevés »** propose deux modes, qui produisent
-exactement le même appareil et les mêmes courbes :
+Les deux modes produisent exactement le même appareil et les mêmes courbes.
 
-### Automatique (navigateur sans interface)
+### Automatique — recommandé
 
-L'intégration se connecte elle-même à l'espace client. C'est le mode confortable :
-une fois configuré, vous n'avez plus rien à faire.
-
-Il a un coût : ouvrir un navigateur demande quelques centaines de mégaoctets de
-mémoire et plusieurs dizaines de secondes de processeur à chaque relevé. Sur une
-machine déjà chargée, cela ne passe pas — sur le serveur où cette intégration a
-été déployée la première fois, Chromium mettait **42 secondes rien qu'à
-démarrer**, avant même d'ouvrir une page. Si vos relevés échouent avec un
-message de délai dépassé, passez au mode ci-dessous.
+L'intégration se connecte à votre espace client et lit son historique. Quelques
+requêtes HTTP toutes les six heures : aucun navigateur, quelques mégaoctets de
+mémoire, négligeable même sur un Raspberry Pi.
 
 ### Fichier CSV déposé
 
-Aucun navigateur, aucun identifiant : vous téléchargez le fichier depuis
-l'espace client, vous le déposez dans le dossier d'import de l'intégration, et
-elle s'occupe du reste.
+Aucun identifiant : vous téléchargez le fichier depuis l'espace client, vous le
+déposez dans le dossier d'import de l'intégration, elle s'occupe du reste.
 
 1. Sur [leaudiledefrance.fr](https://www.leaudiledefrance.fr/), ouvrez la page
    **Historique**, choisissez l'affichage **Litres** puis **Jours**, et cliquez
    sur **Télécharger la période**. Vous obtenez `historique_jours_litres.csv`.
-2. Déposez ce fichier dans le dossier `/data/import` du conteneur de
-   l'intégration :
+2. Déposez ce fichier dans `/data/import` du conteneur de l'intégration :
 
    ```bash
    # Repérez le conteneur (son nom contient "sedif")
@@ -57,68 +80,32 @@ elle s'occupe du reste.
    docker cp historique_jours_litres.csv <nom-du-conteneur>:/data/import/
    ```
 
-3. Cliquez sur **Tester la connexion** pour vérifier la lecture, puis sur
-   **Réimporter l'historique** pour l'intégrer immédiatement. Sinon, le
-   prochain relevé automatique s'en chargera.
+3. Cliquez sur **Tester la connexion** puis sur **Réimporter l'historique**.
 
 Vous pouvez déposer **plusieurs fichiers** : ils sont tous lus et fusionnés. Un
 export de juillet à côté d'un export d'août rallonge simplement l'historique.
 Les fichiers ne sont jamais supprimés, et redéposer deux fois le même n'a aucun
 effet — le curseur d'import sait déjà ce que Gladys possède.
 
-C'est le mode à choisir si votre machine est modeste, ou si vous préférez que
-rien ne se connecte à votre espace client sans vous.
-
-## Prérequis
-
-- Un compte sur [leaudiledefrance.fr](https://www.leaudiledefrance.fr/), avec un
-  contrat actif. Si vous n'en avez pas encore, créez-le sur le site : c'est le
-  même compte que celui utilisé pour consulter vos factures.
-- Un compteur télérelevé. Le SEDIF a généralisé le télérelevé, mais si votre
-  compteur ne l'est pas encore, l'espace client n'affiche pas d'historique
-  quotidien et l'intégration n'aura rien à importer.
-- Vérifiez **avant l'installation** que la page « Historique » de votre espace
-  client affiche bien une courbe quotidienne en litres. Si elle est vide côté
-  site, elle le sera aussi côté Gladys.
-
-## Configuration
-
-| Champ                              | Rôle                                                                                                                   |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| **Adresse e-mail**                 | L'identifiant de votre espace client.                                                                                  |
-| **Mot de passe**                   | Le mot de passe du même compte. Il est chiffré par Gladys et n'est jamais renvoyé vers votre navigateur.               |
-| **Numéro de contrat**              | À renseigner uniquement si votre compte porte plusieurs contrats (plusieurs logements). Il figure sur votre facture.   |
-| **Intervalle de rafraîchissement** | Par défaut 6 heures. Le compteur n'étant relevé qu'une fois par jour, il n'y a rien à gagner à descendre plus bas.     |
-| **Historique à importer**          | Nombre de jours repris lors du premier import. 30 jours par défaut, jusqu'à 3 ans.                                     |
-| **Inclure les relevés estimés**    | Désactivé par défaut. Voir « Relevés mesurés et estimés » plus bas.                                                    |
-| **URL de la page Historique**      | À laisser vide. Utile seulement si l'exploitant déplace sa page d'historique et que l'intégration ne la retrouve plus. |
-
-Une fois les champs remplis, utilisez le bouton **Tester la connexion** : il se
-connecte réellement à l'espace client et vous renvoie le dernier relevé
-disponible. C'est le moyen le plus rapide de vérifier vos identifiants avant
-d'attendre le premier relevé automatique.
-
-Le bouton **Réimporter l'historique** oublie le curseur d'import et republie
-toute la période configurée. Il sert après un changement de la valeur
-« Historique à importer », ou si vous avez supprimé des données dans Gladys.
+Choisissez ce mode si vous préférez que rien ne se connecte à votre espace
+client sans vous, ou si le mode automatique tombe en panne.
 
 ## Délai des données
 
-Les relevés ne sont pas temps réel. Le compteur est télérelevé une fois par
-jour et l'exploitant publie la donnée avec **un à deux jours de décalage** :
+Les relevés ne sont pas temps réel. Le compteur est télérelevé une fois par jour
+et l'exploitant publie la donnée avec **un à deux jours de décalage** :
 l'appareil affiche donc la consommation d'avant-hier, pas celle de la minute.
 C'est une limite du service, pas de l'intégration.
 
 Chaque relevé est publié dans Gladys **à sa date réelle**, pas à la date de
-l'import : votre courbe de consommation est donc correctement datée, y compris
-pour l'historique repris au premier démarrage.
+l'import : votre courbe est donc correctement datée, y compris pour l'historique
+repris au premier démarrage.
 
-L'intégration gère elle-même son rythme de rafraîchissement, sans passer par le
-mécanisme de scrutation de Gladys (qui ne descend pas en dessous d'un
-rafraîchissement par minute — inadapté à une donnée quotidienne coûteuse à
-récupérer). Un premier relevé a lieu une quinzaine de secondes après le
-démarrage ou après chaque modification de la configuration, puis à l'intervalle
-que vous avez choisi.
+L'intégration gère elle-même son rythme, sans passer par le mécanisme de
+scrutation de Gladys (qui ne descend pas en dessous d'un rafraîchissement par
+minute — inadapté à une donnée quotidienne). Un premier relevé a lieu une minute
+après le démarrage ou après chaque modification de la configuration, puis à
+l'intervalle choisi.
 
 ## Relevés mesurés et estimés
 
@@ -134,21 +121,17 @@ existe si vous préférez une courbe continue à une courbe exacte.
 
 ## Comment l'intégration récupère les données
 
-Ni le SEDIF ni son exploitant ne publient d'API pour les données de
-consommation. L'espace client est un site Salesforce dont les échanges sont
-signés et changent à chaque mise à jour du site.
+Ni le SEDIF ni son exploitant ne publient d'API documentée. L'espace client est
+un site Salesforce, et l'intégration parle le même protocole que ses propres
+pages : elle se connecte, liste vos contrats, lit le compteur du contrat, puis
+demande l'historique quotidien. Ce sont exactement les échanges que fait votre
+navigateur quand vous ouvrez la page « Historique ».
 
-Cette intégration procède donc comme vous le feriez : elle ouvre un navigateur
-sans interface graphique (Chromium), se connecte avec vos identifiants, ouvre la
-page « Historique », sélectionne l'affichage en litres par jour, et lit le
-fichier CSV que produit le bouton de téléchargement. Le fichier n'est jamais
-écrit sur le disque : il est lu directement dans la page.
-
-**Conséquence à connaître :** cette approche dépend de la structure des pages du
-site. Si l'exploitant refond son espace client, l'intégration peut cesser de
-fonctionner du jour au lendemain, jusqu'à une mise à jour. Le badge de l'appareil
-passe alors en orange et les logs de l'intégration (`docker logs`) indiquent
-quelle étape a échoué.
+**Conséquence à connaître :** ce protocole n'est pas un engagement de
+l'exploitant. Une refonte de son espace client peut le changer, et l'intégration
+cesserait alors de fonctionner jusqu'à une mise à jour. Le badge de l'appareil
+passe en orange et le message d'erreur nomme l'étape qui a échoué. Le mode
+« fichier déposé » reste disponible en attendant.
 
 ## Vos identifiants
 
@@ -159,59 +142,20 @@ conteneur chez vous, et utilisés uniquement pour se connecter à
 
 ## En cas de problème
 
-- **« Tester la connexion » signale des identifiants refusés** : vérifiez-les en
-  vous connectant à la main sur le site. Un compte peut aussi être temporairement
-  bloqué après plusieurs échecs.
-- **Aucune donnée après plusieurs heures** : ouvrez la page « Historique » de
-  votre espace client. Si elle n'affiche pas de courbe quotidienne, votre
-  compteur n'est probablement pas télérelevé.
-- **Le badge de l'appareil est orange** : soit le dernier import a échoué, soit
+- **Identifiants refusés** : vérifiez-les en vous connectant à la main sur le
+  site. Un compte peut aussi être temporairement bloqué après plusieurs échecs.
+- **« Aucun compteur rattaché au contrat »** : votre compteur n'est
+  probablement pas télérelevé, et l'espace client n'a pas d'historique
+  quotidien à donner.
+- **« Le contrat X ne fait pas partie des contrats actifs »** : le message liste
+  les contrats trouvés ; recopiez-en un, ou videz le champ pour prendre le seul
+  contrat du compte.
+- **Une erreur nommant une classe `LTN...`** : l'exploitant a changé son
+  application. C'est le cas qui demande une mise à jour de l'intégration ;
+  basculez sur « Fichier CSV déposé » en attendant.
+- **Le badge de l'appareil est orange** : soit le dernier relevé a échoué, soit
   l'exploitant n'a rien publié depuis plus de quatre jours. L'infobulle du badge
   donne la raison.
 - **La courbe s'arrête net à une date passée** : c'est le comportement attendu
   quand l'exploitant cesse de publier ; les jours manquants seront importés dès
-  qu'ils apparaîtront sur le site.
-- **« Impossible de joindre connexion.leaudiledefrance.fr »** : le message
-  nomme la cause exacte — résolution DNS, connexion refusée, ou aucune réponse.
-  L'intégration ne vérifie que l'accès réseau brut, jamais le certificat : le
-  portail en sert un incomplet que les navigateurs réparent d'eux-mêmes, et un
-  contrôle plus strict que le navigateur refuserait une installation saine.
-- **« L'action a échoué. Vérifiez que l'intégration est démarrée. »** : Gladys
-  accorde au maximum 120 secondes à un bouton pour répondre. L'intégration
-  s'arrête d'elle-même avant cette limite pour vous renvoyer une vraie
-  explication ; si vous voyez malgré tout ce message générique, c'est que le
-  conteneur ne répond plus du tout — regardez ses logs.
-
-## Quand le mode automatique échoue
-
-À chaque échec d'une étape du navigateur, l'intégration **photographie la page**
-avant de la fermer. Le message d'erreur affiché dans Gladys porte déjà
-l'essentiel : l'URL, le titre de la page, le nombre de champs de connexion
-trouvés et le début du texte visible. C'est souvent suffisant pour comprendre
-(page d'attente, bandeau cookies, compte bloqué, site en maintenance).
-
-Pour aller plus loin, une capture d'écran et le HTML complet sont écrits dans
-`/data/diagnostics` du conteneur, les six derniers échecs étant conservés :
-
-```bash
-docker cp <nom-du-conteneur>:/data/diagnostics ./diagnostics-sedif
-```
-
-Ouvrez le `.png` : vous verrez exactement ce que le navigateur voyait.
-
-## Charge machine
-
-Ouvrir un navigateur coûte cher : comptez quelques centaines de Mo de mémoire
-et plusieurs dizaines de secondes de processeur à chaque relevé. C'est pourquoi
-l'intervalle par défaut est de 6 heures et que le minimum est d'une heure.
-
-L'intégration n'ouvre **jamais deux navigateurs à la fois** : si vous cliquez
-sur un bouton pendant qu'un relevé automatique tourne, le second refuse de
-démarrer et vous le dit. Chaque session a également une durée maximale
-au-delà de laquelle le navigateur est tué, pour qu'une page bloquée ne laisse
-pas un Chromium tourner indéfiniment.
-
-Si votre machine reste chargée en permanence alors que l'intégration est
-installée, arrêtez-la depuis Gladys : la charge doit retomber immédiatement.
-Si ce n'est pas le cas, elle vient d'autre chose — la construction de l'image
-Docker, par exemple, est bien plus lourde que son exécution.
+  qu'ils apparaîtront.

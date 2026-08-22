@@ -69,7 +69,7 @@ test('the source select offers exactly the two the code implements', () => {
   const source = manifest.config_schema.find((f) => f.key === 'source');
   assert.deepEqual(
     source.options.map((o) => o.value),
-    ['portal', 'file'],
+    ['api', 'file'],
   );
   assert.equal(source.default, DEFAULT_CONFIG.source);
 });
@@ -167,13 +167,14 @@ test('the cover image ships in the repo and respects the store limits', async ()
   assert.deepEqual(size, { width: 800, height: 534 }, 'the cover must be exactly 800x534');
 });
 
-test('a browser action gets the long ack the portal needs', () => {
-  // Signing in and rendering a Lightning page takes far more than the 5 s of a
-  // regular command: an action that forgets its timeout always fails.
+test('an action that talks to the portal gets a long ack', () => {
+  // Signing in and reading a history is several round trips to a slow portal,
+  // far more than the 5 s of a regular command: an action that forgets its
+  // timeout ends as the useless "check that the integration is started".
   for (const action of manifest.actions) {
     assert.ok(
       action.timeout_seconds >= 60,
-      `action "${action.key}" drives a browser session and needs at least 60 s`,
+      `action "${action.key}" reaches the portal and needs at least 60 s`,
     );
   }
 });

@@ -11,10 +11,10 @@
 // WHY A LOCAL SCHEDULE AND NOT `onPoll`
 // The Gladys core polls devices at one of six fixed intervals (1 s to 1 min):
 // a device publishing any other `poll_frequency` is rejected outright with
-// "invalid poll frequency". A SEDIF meter is read once a day and each refresh
-// costs a full browser session, so the core's polling is the wrong tool. The
-// integration therefore publishes its device WITHOUT `poll_frequency` — the
-// core never polls it — and runs its own timer here.
+// "invalid poll frequency". A SEDIF meter is read once a day by the operator,
+// so the core's polling is the wrong tool. The integration therefore publishes
+// its device WITHOUT `poll_frequency` — the core never polls it — and runs its
+// own timer here.
 //
 // Environment variables provided by the Gladys supervisor to the container:
 //   - GLADYS_HOST_API_URL         (host API URL)
@@ -35,10 +35,9 @@ import { ensureStateDir } from './src/storage.js';
 
 const gladys = new GladysIntegration();
 
-// Let the connection settle before the first browser session — long enough
-// that a user who just saved their credentials can press "Tester la connexion"
-// without colliding with it, and that a container stuck in a restart loop does
-// not start a Chromium every few seconds.
+// Let the connection settle before the first refresh — long enough that a user
+// who just saved their credentials can press "Tester la connexion" without the
+// two colliding.
 const FIRST_REFRESH_DELAY_MS = 60_000;
 
 // Current configuration (hot-reloaded via onConfigUpdated).
@@ -145,8 +144,7 @@ function stopRefreshLoop() {
  */
 async function runRefresh() {
   if (refreshInFlight) {
-    // A browser session takes tens of seconds; a slow portal must not pile up
-    // Chromium processes in a container sized for one.
+    // A slow portal must not let refreshes pile up on top of each other.
     logger.info('Refresh skipped: the previous one is still running');
     return;
   }
@@ -154,13 +152,7 @@ async function runRefresh() {
   try {
     await refreshAllDevices(gladys, config);
   } catch (err) {
-    if (err.code === 'SESSION_BUSY') {
-      // The user clicked a button at the same moment: theirs wins, ours will
-      // run at the next tick. Not an error.
-      logger.info('Refresh postponed: a portal session is already running');
-    } else {
-      logger.error('Refresh failed', err);
-    }
+    logger.error('Refresh failed', err);
   } finally {
     refreshInFlight = false;
     await publishDeviceTransports().catch(() => {});

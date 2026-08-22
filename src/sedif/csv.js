@@ -23,7 +23,7 @@
  * @typedef {object} Reading
  * @property {string} date       day of the reading, `YYYY-MM-DD`
  * @property {Date}   at         the same day as a Date (noon UTC, see below)
- * @property {number} indexLiters       meter index, in litres
+ * @property {number} indexCubicMeters  meter index, in cubic meters
  * @property {number} consumptionLiters consumption of that day, in litres
  * @property {boolean} estimated true when the operator estimated the value
  */
@@ -70,7 +70,9 @@ export function parseHistoryCsv(csv) {
     readings.push({
       date,
       at: new Date(`${date}T12:00:00.000Z`),
-      indexLiters,
+      // The CSV gives the index in LITRES, where the API gives cubic meters.
+      // Converting here is what lets both sources feed the same device.
+      indexCubicMeters: litersToCubicMeters(indexLiters),
       consumptionLiters,
       estimated: isEstimated(columns[3]),
     });

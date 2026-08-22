@@ -1,10 +1,9 @@
 // -----------------------------------------------------------------------------
 // Second data source: the export YOU drop in, no browser involved.
 //
-// Driving the portal needs a headless Chromium, and a browser is not free. On
-// a home server already busy with cameras and network scans, starting one has
-// been measured at 42 seconds — before a single page is opened. When the
-// machine cannot afford that, the data can still get in: download
+// The automatic source signs in to the portal on your behalf. Some people
+// would rather it did not, and a portal can always change under us. So the
+// data can also get in by hand: download
 // `historique_jours_litres.csv` from the customer portal yourself, drop it in
 // the integration's import folder, and everything downstream — parsing, the
 // import cursor, the dated backfill, the batching — works exactly as it does
@@ -20,7 +19,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { IMPORT_DIR } from '../storage.js';
-import { PortalError } from './portal.js';
+import { PortalError } from './errors.js';
 
 const logger = createLogger({ name: 'file' });
 

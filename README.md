@@ -27,54 +27,65 @@ The device is published **without `poll_frequency`**, and the integration runs
 its own refresh loop (`index.js`). That is not a stylistic choice: the Gladys
 core validates `poll_frequency` against its six `DEVICE_POLL_FREQUENCIES`
 values — 1 s to 1 minute, in **milliseconds** — and rejects the whole publish
-with `invalid poll frequency` otherwise. A meter the operator reads once a day,
-where every refresh costs a browser session, has no business on that clock.
+with `invalid poll frequency` otherwise. A meter the operator reads once a day
+has no business on that clock.
 
 ## Two sources, one pipeline
 
-`source` (config) picks where the CSV comes from:
+`source` (config) picks where the readings come from:
 
-- **`portal`** — a headless browser signs in and exports it (below);
-- **`file`** — the user drops the export in `/data/import` and no browser runs
-  at all ([`src/sedif/file.js`](./src/sedif/file.js)).
+- **`api`** (default) — the portal's own Salesforce Aura API, over plain HTTP
+  ([`src/sedif/api.js`](./src/sedif/api.js));
+- **`file`** — a CSV the user drops in `/data/import`, parsed by
+  [`src/sedif/csv.js`](./src/sedif/csv.js) ([`src/sedif/file.js`](./src/sedif/file.js)).
 
-They are interchangeable on purpose: both hand back the raw portal CSV, and
-everything after that — parsing, cursor, dated backfill, batching — is the same
-code and produces the same device. The file source exists because a browser is
-not affordable everywhere: on the home server this was first deployed to,
-Chromium needed **42 seconds just to start**, before a single page was opened.
+They are interchangeable on purpose: both hand back the same `Reading` shape,
+and everything after that — cursor, dated backfill, batching, the device — is
+one piece of code.
 
-## How the automatic source gets the data, and why
+## How the API source works
 
-Neither the SEDIF nor Veolia publishes an API for consumption data. The customer
-portal (`connexion.leaudiledefrance.fr`) is a Salesforce Experience Cloud site:
-the Historique page is rendered by Lightning components and fed by opaque,
-signed Aura payloads whose descriptors change with each release of the site.
-Every working community tool ([MetersToHA](https://github.com/mdeweerd/MetersToHA),
-[veolia-idf](https://github.com/s0nik42/veolia-idf),
-[PyVeoliaIDF](https://github.com/ssenart/PyVeoliaIDF)) drives a real browser for
-that reason, and so does this integration.
+Neither the SEDIF nor Veolia publishes a documented API, but the portal's own
+Lightning pages talk to a Salesforce Aura endpoint that speaks plain
+form-encoded HTTP. Four exchanges:
 
-The flow, all of it in [`src/sedif/portal.js`](./src/sedif/portal.js):
+1. `GET /s/login/` — scrape `fwuid` and the app descriptor (the Lightning build
+   ids, which change with every Salesforce release, hence read at runtime);
+2. `POST /s/sfsites/aura` — `apex://LightningLoginFormController/ACTION$login`,
+   then follow the `clientRedirect` frontdoor URL that sets the session cookies.
+   The CSRF token comes back in a cookie whose name contains `ERIC`, and every
+   later call must echo it in `aura.token`;
+3. Apex actions via `aura://ApexActionController/ACTION$execute`:
+   `LTN009_ICL_ContratsGroupements` (contracts) →
+   `LTN008_ICL_ContratDetails` (meter number + PDS id) →
+   `LTN015_ICL_ContratConsoHisto` (the daily history);
+4. Responses carry an anti-CSRF prefix; the payload is between the first `{`
+   and the last `}`.
 
-1. sign in on `/s/login/` (Chromium, headless, via `playwright-core`);
-2. open the Historique page, derived from wherever the login landed
-   (`/particuliers/s/`, `/espace-bailleurs-syndics/s/`…);
-3. select the _Litres_ / _Jours_ view;
-4. press _Télécharger la période_ — the portal builds `historique_jours_litres.csv`
-   **client-side** and exposes it as a `data:` URI on a hidden `<a download>`;
-5. read that attribute and decode it. Nothing is ever written to disk, which is
-   what makes this work under the read-only rootfs of the Gladys sandbox.
+The transport lives in [`src/sedif/aura.js`](./src/sedif/aura.js), the four
+exchanges in [`src/sedif/api.js`](./src/sedif/api.js).
 
-The CSV itself (`date;index;consommation;méthode`, litres) is parsed by
-[`src/sedif/csv.js`](./src/sedif/csv.js) — pure, no I/O, and the place where all
-format assumptions are pinned down by tests.
+**Two things that will bite anyone reading this later.**
 
-**This is the fragile part.** The selectors live in one file, `history_url`
-lets a user pin the history page from the Gladys UI, and `SEDIF_LOGIN_URL`
-overrides the login page — the portal has already moved twice
-(`espace-client.vedif.eau.veolia.fr` → `rock-vedif.my.site.com` →
-`connexion.leaudiledefrance.fr`).
+_Units._ `CONSOMMATION` is in **cubic meters** (0.150 = 150 L) and
+`VALEUR_INDEX` is the index, also in cubic meters — where the CSV export gives
+both in **litres**. Getting it backwards puts a household meter at a million m³.
+
+_TLS._ The portal serves an **incomplete certificate chain**: it omits the Gandi
+intermediate that signs its leaf. Browsers repair that themselves (AIA); Node
+does not, and reports `UNABLE_TO_VERIFY_LEAF_SIGNATURE` on a perfectly healthy
+connection. [`certs/gandi_intermediate.pem`](./certs) is handed to Node
+alongside its own root store — verification stays fully on. `SEDIF_EXTRA_CA_FILE`
+adds another CA if a proxy needs it.
+
+**Credit.** The protocol was reverse-engineered by TimoPtr in
+[pyeauidf](https://github.com/TimoPtr/pyeauidf) / [ha_eauidf](https://github.com/TimoPtr/ha_eauidf)
+(Apache-2.0), including the missing-intermediate diagnosis. This is an
+independent JavaScript implementation of the same documented exchange.
+
+**What is fragile now:** the Apex class names. A Salesforce release can rename
+them — but the endpoint then answers with a named error immediately, which is a
+far better failure than a selector timing out on a rendered page.
 
 ## Project structure
 
@@ -87,14 +98,17 @@ overrides the login page — the portal has already moved twice
 │  │  └─ waterMeter.js               #   the meter: features, import, badge
 │  ├─ sedif/
 │  │  ├─ index.js                    #   the driver boundary (fetchHistory)
-│  │  ├─ portal.js                   #   browser session + selectors
-│  │  └─ csv.js                      #   pure parser + reading selection
-│  ├─ storage.js                     # import cursor + scratch dir on /data
+│  │  ├─ aura.js                     #   Salesforce Aura transport (HTTP + TLS)
+│  │  ├─ api.js                      #   the four portal exchanges
+│  │  ├─ file.js                     #   the dropped-CSV source
+│  │  ├─ csv.js                      #   pure parser + reading selection
+│  │  └─ errors.js                   #   PortalError
+│  ├─ storage.js                     # import cursor + /data layout
 │  └─ config.js                      # config defaults + normalization
-├─ scripts/check-browser.js          # build-time guard: right browser, right path
+├─ certs/gandi_intermediate.pem      # the chain link the portal forgets to send
 ├─ docs/{en,fr}.md                   # user documentation, re-hosted by Gladys
 ├─ gladys-assistant-integration.json # manifest
-└─ Dockerfile                        # Debian + Playwright's Chromium, multi-arch
+└─ Dockerfile                        # node:24-alpine, multi-arch
 ```
 
 ## Import semantics
@@ -114,7 +128,6 @@ does not have yet:
 
 ```bash
 npm install
-npx playwright-core install --only-shell chromium  # NOT the distro Chromium
 GLADYS_HOST_API_URL="http://localhost:1443" \
 GLADYS_INTEGRATION_TOKEN="<token>" \
 GLADYS_INTEGRATION_SELECTOR="sedif" \
@@ -123,10 +136,9 @@ LOG_LEVEL=debug \
 npm start
 ```
 
-`GLADYS_SEDIF_STATE_DIR` replaces `/data` outside the sandbox. `CHROMIUM_PATH`
-overrides the browser binary — but only ever point it at a build matching the
-`playwright-core` version in `package.json`. A distro Chromium is a different
-major version and fails at launch (see the Dockerfile).
+`GLADYS_SEDIF_STATE_DIR` replaces `/data` outside the sandbox. `SEDIF_BASE_URL`
+points the client at another host (the tests use it), and `SEDIF_EXTRA_CA_FILE`
+adds a CA to the trust bundle.
 
 ## Quality checks
 
@@ -134,31 +146,19 @@ major version and fails at launch (see the Dockerfile).
 npm run format:check   # Prettier
 npm run lint           # ESLint
 npm test               # node --test
-npm run check:browser  # is the browser the code asks for actually installed?
 ```
 
-The suite covers the CSV parser, the configuration, the manifest/code
-consistency and the full import path (cursor, batching, badge) with a canned
-export. It also drives **a real Chromium** against a stand-in portal
-([`test/helpers/fakePortal.js`](./test/helpers/fakePortal.js)) to exercise the
-browser plumbing — those tests skip when no Chromium is installed; CI installs
-one so they always run.
+The suite runs in a couple of seconds and needs nothing installed. It covers the
+CSV parser, the configuration, the manifest/code consistency, the whole import
+path (cursor, batching, badge), and **the Aura protocol end to end** against a
+stand-in portal served over real HTTPS with a self-signed certificate
+([`test/helpers/fakeAuraPortal.js`](./test/helpers/fakeAuraPortal.js)) — which
+exercises the login handshake, the frontdoor session, the CSRF echo, the Apex
+unwrapping, the units, and the custom-CA code path.
 
-`check:browser` also runs inside the Docker build, so an image that ships the
-wrong browser fails to build instead of failing hours later on the user's box.
-It really launches, because `chromium.executablePath({ channel })` ignores the
-channel and would happily confirm a binary the launch never uses. A _missing_
-executable fails the build; a present one that will not start is only a warning,
-since the arm64 image is built under QEMU emulation.
-
-Browser packaging is one decision written in two files: the code asks for
-`channel: 'chromium-headless-shell'` and the image installs it with
-`--only-shell`. **Change one and you must change the other.**
-
-What no test can cover: whether the selectors still match the live portal. Only
-a run against the real site, with real credentials, tells you that — the
-**Tester la connexion** button in the Gladys Configuration screen is there for
-exactly that.
+What no test can cover: whether the Apex class names still match the live
+portal. Only a run against the real site tells you that — the **Tester la
+connexion** button in the Gladys Configuration screen is there for exactly that.
 
 ## Publish
 

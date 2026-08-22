@@ -35,19 +35,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # The portal has no API: part of the suite drives a real browser against
-      # a stand-in portal (test/helpers/fakePortal.js). Without a Chromium those
-      # tests silently skip, and the fragile half of the integration would go
-      # unchecked on every pull request.
-      - name: Install Chromium
-        run: npx playwright-core install --with-deps --only-shell chromium
-
-      # Same check the Docker build runs: the browser the code asks for must be
-      # the one that got installed. Cheap here, and it catches the packaging
-      # mistake before anyone waits for an image.
-      - name: Check the browser is the one the code asks for
-        run: npm run check:browser
-
       - name: Check formatting (Prettier)
         run: npm run format:check
 

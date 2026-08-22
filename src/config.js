@@ -14,17 +14,16 @@
 // Defaults: they MUST stay consistent with the `default` values declared in the
 // `config_schema` of the manifest (a unit test enforces it).
 export const DEFAULT_CONFIG = {
-  // 'portal': sign in with a headless browser. 'file': read the CSV the user
-  // dropped in the import folder — no browser, for machines that cannot afford
-  // one (see src/sedif/file.js).
-  source: 'portal',
+  // 'api': sign in and read the portal's own Aura API (src/sedif/api.js).
+  // 'file': read the CSV the user dropped in the import folder, for people who
+  // would rather nothing signed in on their behalf (src/sedif/file.js).
+  source: 'api',
   email: '',
   password: '',
   contract: '',
   poll_frequency: 21600, // 6 h — the meter is only read once a day
   history_days: 30, // how far back the first import goes
   include_estimated: false, // estimated readings can make the index go backwards
-  history_url: '', // advanced override, empty = auto-discovery
 };
 
 /**
@@ -44,7 +43,6 @@ export function normalizeConfig(raw = {}) {
     // A checkbox arrives as a boolean, but a hand-written variable may be a
     // string: only an explicit truthy value enables estimated readings.
     include_estimated: raw.include_estimated === true || raw.include_estimated === 'true',
-    history_url: String(raw.history_url ?? DEFAULT_CONFIG.history_url).trim(),
   };
 }
 

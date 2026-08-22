@@ -93,11 +93,11 @@ test('the dropped-file source needs no account', async () => {
   const { isConfigured } = await import('../src/config.js');
   // The user already signed in by hand, in their own browser.
   assert.equal(isConfigured(normalizeConfig({ source: 'file' })), true);
-  assert.equal(isConfigured(normalizeConfig({ source: 'portal' })), false);
+  assert.equal(isConfigured(normalizeConfig({ source: 'api' })), false);
 });
 
-test('an unknown source falls back to the portal, never to nothing', () => {
-  assert.equal(normalizeConfig({ source: 'carrier-pigeon' }).source, 'portal');
-  assert.equal(normalizeConfig({}).source, 'portal');
+test('an unknown source falls back to the API, never to nothing', () => {
+  assert.equal(normalizeConfig({ source: 'carrier-pigeon' }).source, 'api');
+  assert.equal(normalizeConfig({}).source, 'api');
   assert.equal(normalizeConfig({ source: 'file' }).source, 'file');
 });

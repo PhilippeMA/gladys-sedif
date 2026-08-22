@@ -25,12 +25,7 @@ import {
   DEVICE_FEATURE_UNITS,
   DEVICE_TRANSPORTS,
 } from '@gladysassistant/integration-sdk';
-import {
-  contractKey,
-  fetchHistory,
-  litersToCubicMeters,
-  selectNewReadings,
-} from '../sedif/index.js';
+import { contractKey, fetchHistory, selectNewReadings } from '../sedif/index.js';
 import { clearCursor, readCursor, writeCursor } from '../storage.js';
 import { isConfigured } from '../config.js';
 
@@ -76,10 +71,10 @@ export const waterMeter = {
       external_id: ids.device,
       // NO `poll_frequency`: the core only accepts the six values of its
       // DEVICE_POLL_FREQUENCIES list (in milliseconds, 1 s to 1 min), and
-      // anything else is rejected with "invalid poll frequency". Driving a
-      // browser session against the portal once a minute would be absurd for
-      // a meter read once a day, so this integration schedules its own refresh
-      // instead — see `refresh()` below and the loop in index.js.
+      // anything else is rejected with "invalid poll frequency". A meter the
+      // operator reads once a day has no business on that clock, so this
+      // integration schedules its own refresh instead — see `refresh()` below
+      // and the loop in index.js.
       features: [
         {
           name: 'Index du compteur',
@@ -158,7 +153,7 @@ export const waterMeter = {
           fr: `Connexion réussie, ${readings.length} jours exportés, mais aucun relevé mesuré pour l'instant.`,
         };
       }
-      const index = litersToCubicMeters(latest.indexLiters);
+      const index = latest.indexCubicMeters;
       return {
         en: `Connection OK: meter at ${index} m³ on ${latest.date}, ${latest.consumptionLiters} L used that day (${readings.length} days available).`,
         fr: `Connexion OK : compteur à ${index} m³ le ${latest.date}, ${latest.consumptionLiters} L consommés ce jour-là (${readings.length} jours disponibles).`,
@@ -210,11 +205,9 @@ async function importHistory(gladys, config, deps = {}) {
     history = await fetchHistory(config, deps);
     lastFailureMessage = null;
   } catch (err) {
-    // "Another session is running" is not a failure of the meter, it is the
-    // concurrency guard doing its job: it must not paint the badge orange.
-    if (err.code !== 'SESSION_BUSY') {
-      lastFailureMessage = err.message;
-    }
+    // Remember the reason so the device badge can carry it, then let the
+    // caller report the failed refresh.
+    lastFailureMessage = err.message;
     throw err;
   }
 
@@ -243,7 +236,7 @@ async function importHistory(gladys, config, deps = {}) {
       batch.flatMap((reading) => [
         {
           device_feature_external_id: ids.feature(FEATURE.INDEX),
-          state: litersToCubicMeters(reading.indexLiters),
+          state: reading.indexCubicMeters,
           created_at: reading.at,
         },
         {
