@@ -174,6 +174,23 @@ party service is contacted.
   to send you a real explanation, so if you still get this generic message the
   container has stopped answering entirely — check its logs.
 
+## When the automatic source fails
+
+Whenever a browser step fails, the integration **photographs the page** before
+closing it. The error shown in Gladys already carries the essentials: the URL,
+the page title, how many login fields were found, and the start of the visible
+text. That is often enough to understand it (a waiting page, a cookie banner, a
+locked account, the site under maintenance).
+
+To go further, a screenshot and the full HTML are written to
+`/data/diagnostics` in the container, keeping the last six failures:
+
+```bash
+docker cp <container-name>:/data/diagnostics ./diagnostics-sedif
+```
+
+Open the `.png`: you see exactly what the browser saw.
+
 ## Machine load
 
 Opening a browser is expensive: a few hundred megabytes of memory and tens of

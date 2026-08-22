@@ -31,6 +31,9 @@ export const BROWSER_PROFILE_DIR = () => path.join(STATE_DIR, 'chromium');
 /** Where the user drops the CSV exported by hand (source = "file"). */
 export const IMPORT_DIR = () => path.join(STATE_DIR, 'import');
 
+/** Screenshots and HTML dumps of the pages a browser session failed on. */
+export const DIAGNOSTICS_DIR = () => path.join(STATE_DIR, 'diagnostics');
+
 /**
  * Create the writable directories. Called once at startup so a permission
  * problem shows up in the logs immediately, not at the first poll.
@@ -41,6 +44,7 @@ export async function ensureStateDir() {
     // Always created, whatever the configured source: a folder that exists is
     // what tells a user where the file is supposed to go.
     await mkdir(IMPORT_DIR(), { recursive: true });
+    await mkdir(DIAGNOSTICS_DIR(), { recursive: true });
     // Playwright creates a throw-away browser profile under TMPDIR at every
     // launch. The default (/tmp) belongs to the read-only rootfs, so point it
     // at the volume — otherwise Chromium never starts.

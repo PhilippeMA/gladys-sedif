@@ -75,6 +75,14 @@ ${contract ? `<a href="/s/historique?contract=${contract}">${contract}</a>` : ''
 </script>
 ${FOOT}`;
 
+// The login page, wrapped in an iframe. Salesforce Experience Cloud sites do
+// render their login this way, and `page.locator()` only searches the main
+// frame — so "no password field on this page" can be a lie.
+const FRAMED_LOGIN_PAGE = `${HEAD}
+<h1>Espace client</h1>
+<iframe src="/s/login/inner" style="width:600px;height:400px;border:0"></iframe>
+${FOOT}`;
+
 /**
  * Start the stand-in portal.
  *
@@ -82,15 +90,30 @@ ${FOOT}`;
  * @param {string} options.csv         content the export button will produce
  * @param {boolean} [options.rejectLogin] serve the "wrong password" variant
  * @param {string} [options.contract]  render a contract link on the history page
+ * @param {boolean} [options.framedLogin] put the login form inside an iframe
  * @returns {Promise<{ loginUrl: string, historyUrl: string, close: () => Promise<void> }>}
  */
-export async function startFakePortal({ csv, rejectLogin = false, contract = '' }) {
+export async function startFakePortal({
+  csv,
+  rejectLogin = false,
+  contract = '',
+  framedLogin = false,
+}) {
   const server = createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     res.setHeader('content-type', 'text/html; charset=utf-8');
 
     if (url.pathname === '/s/login/') {
+      if (framedLogin) {
+        res.end(FRAMED_LOGIN_PAGE);
+        return;
+      }
       res.end(rejectLogin ? LOGIN_ERROR_PAGE : LOGIN_PAGE);
+      return;
+    }
+    if (url.pathname === '/s/login/inner') {
+      // Inside the iframe, the form navigates the WHOLE window on submit.
+      res.end(LOGIN_PAGE.replace('location.href =', 'top.location.href ='));
       return;
     }
     if (url.pathname === '/s/historique') {

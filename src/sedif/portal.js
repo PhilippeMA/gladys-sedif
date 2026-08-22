@@ -27,6 +27,7 @@ import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { chromium } from 'playwright-core';
+import { capturePageState } from './diagnostics.js';
 
 const logger = createLogger({ name: 'portal' });
 
@@ -50,6 +51,11 @@ export const DOWNLOAD_FILENAME = 'historique_jours_litres.csv';
 // so these are tight enough to fit inside the deadlines below.
 const NAVIGATION_TIMEOUT_MS = 45_000;
 const STEP_TIMEOUT_MS = 20_000;
+
+// The login form is the one wait worth being patient for: it is the first
+// thing a cold Lightning bundle renders, on a machine that has already spent
+// several seconds just opening a page.
+const LOGIN_FORM_TIMEOUT_MS = 40_000;
 
 /** Whole-session budget, beyond which the browser is killed no matter what. */
 export const DEFAULT_DEADLINE_MS = 180_000;
@@ -133,6 +139,12 @@ export async function downloadHistoryCsv(config, deps = {}) {
       await signIn(page, config);
       await openHistoryPage(page, config);
       return await readCsvFromPage(page);
+    } catch (err) {
+      // Look before guessing: a failed step leaves a screenshot and the HTML on
+      // the volume, and the headline facts go into the message the user reads.
+      const summary = await capturePageState(page, err.code ?? 'failure');
+      err.message = `${err.message} [${summary}]`;
+      throw err;
     } finally {
       // Release the browser on the normal paths; the outer `finally` is only
       // the safety net for the deadline.
@@ -223,52 +235,90 @@ function explainConnectFailure(err, hostname, port) {
   }
 }
 
+/**
+ * Wait for the login form — or for the proof we are already signed in —
+ * ACROSS EVERY FRAME of the page.
+ *
+ * `page.locator()` only searches the main frame. A Salesforce Experience Cloud
+ * site can render its login in an iframe, and then "no password field" is a
+ * lie: the field is right there, one frame down. Polling the frames costs
+ * nothing and removes a whole category of false negative.
+ *
+ * @returns {Promise<{ frame: import('playwright-core').Frame, signedIn: boolean }>}
+ */
+async function waitForLoginForm(page, timeoutMs) {
+  const giveUpAt = Date.now() + timeoutMs;
+
+  while (Date.now() < giveUpAt) {
+    for (const frame of page.frames()) {
+      try {
+        if ((await frame.locator('.profileIcon').count()) > 0) {
+          return { frame, signedIn: true };
+        }
+        if ((await frame.locator('input[type="password"]').count()) > 0) {
+          return { frame, signedIn: false };
+        }
+      } catch {
+        // Frames come and go while a SPA boots; a detached one is not an error.
+      }
+    }
+    await page.waitForTimeout(500);
+  }
+
+  throw new PortalError(
+    'LOGIN_FORM_NOT_FOUND',
+    `No login form and no open session after ${Math.round(timeoutMs / 1000)} s`,
+  );
+}
+
 /** Sign in with the credentials of the account, unless already signed in. */
 async function signIn(page, config) {
   logger.info(`Opening ${loginUrl()}`);
   // `commit` resolves as soon as the response starts, NOT when every blocking
   // script of the Lightning bundle has run. What we actually need is the login
-  // form, and the selector wait right below is what really tells us it is
-  // there; waiting for `domcontentloaded` on a Salesforce app just adds a way
-  // to time out with a page that was loading perfectly well.
+  // form, and the wait right below is what really tells us it is there;
+  // waiting for `domcontentloaded` on a Salesforce app just adds a way to time
+  // out with a page that was loading perfectly well.
   await page.goto(loginUrl(), { waitUntil: 'commit' });
 
-  // The portal either shows the login form, or the avatar of a live session.
-  await page.waitForSelector('input[type="password"], .profileIcon');
+  const { frame, signedIn } = await waitForLoginForm(page, LOGIN_FORM_TIMEOUT_MS);
 
-  if ((await page.locator('.profileIcon').count()) > 0) {
+  if (signedIn) {
     logger.info('Session already open, skipping the login form');
     return;
   }
 
   logger.info('Filling the login form');
-  await page.locator('input[inputmode="email"]').first().fill(config.email);
-  await page.locator('input[type="password"]').first().fill(config.password);
-  await page.locator('.submit-button').first().click();
+  const emailField = frame.locator(
+    'input[inputmode="email"], input[type="email"], input[name*="user" i]',
+  );
+  await emailField.first().fill(config.email);
+  await frame.locator('input[type="password"]').first().fill(config.password);
+  await frame.locator('.submit-button, button[type="submit"]').first().click();
 
   // A wrong password leaves us on the same form with an error banner; a good
   // one lands on the dashboard, whose header carries the avatar.
+  const ERROR_SELECTOR = '.loginError, .form-element__help, [role="alert"]';
   const outcome = await Promise.race([
     page
       .waitForSelector('.profileIcon', { timeout: NAVIGATION_TIMEOUT_MS })
       .then(() => 'signed-in'),
-    page
-      .waitForSelector('.loginError, .form-element__help, [role="alert"]', {
-        timeout: NAVIGATION_TIMEOUT_MS,
-      })
-      .then(() => 'error'),
+    page.waitForSelector(ERROR_SELECTOR, { timeout: NAVIGATION_TIMEOUT_MS }).then(() => 'error'),
   ]).catch(() => 'timeout');
 
   if (outcome === 'error') {
     const message = await page
-      .locator('.loginError, .form-element__help, [role="alert"]')
+      .locator(ERROR_SELECTOR)
       .first()
       .innerText()
       .catch(() => '');
     throw new PortalError('LOGIN_REFUSED', message.trim() || 'The portal refused the credentials');
   }
   if (outcome === 'timeout') {
-    throw new PortalError('LOGIN_TIMEOUT', 'The portal did not answer the login within 60 s');
+    throw new PortalError(
+      'LOGIN_TIMEOUT',
+      `The portal answered neither a session nor an error within ${Math.round(NAVIGATION_TIMEOUT_MS / 1000)} s`,
+    );
   }
 
   logger.info('Signed in');

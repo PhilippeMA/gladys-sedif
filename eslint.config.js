@@ -31,6 +31,17 @@ export default [
       'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     },
   },
+  {
+    // Code inside `page.evaluate()` / `frame.evaluate()` is serialized and run
+    // by Chromium, not by Node: `document` and friends are legitimate there.
+    files: ['src/sedif/diagnostics.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        ...globals.browser,
+      },
+    },
+  },
   // Prettier last: it only removes rules, so it must win.
   prettier,
 ];

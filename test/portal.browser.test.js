@@ -15,9 +15,15 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { chromium } from 'playwright-core';
 import { normalizeConfig } from '../src/config.js';
 import { startFakePortal } from './helpers/fakePortal.js';
+
+// Diagnostics land on the state volume; keep the tests out of a real /data.
+process.env.GLADYS_SEDIF_STATE_DIR = await mkdtemp(path.join(tmpdir(), 'gladys-sedif-browser-'));
 
 const CSV = [
   'Date;Index;Consommation;Methode',
@@ -193,6 +199,57 @@ test('kills the browser when the session outlives its deadline', { skip }, async
   );
   // The browser was closed and the lock released despite the abort.
   assert.equal(await downloadHistoryCsv(config), CSV);
+});
+
+test('finds the login form even when it lives in an iframe', { skip }, async () => {
+  // `page.locator()` only searches the main frame. A Salesforce site that
+  // renders its login in an iframe would look, to the old code, exactly like a
+  // page with no password field at all — a false negative on a working portal.
+  const framed = await startFakePortal({ csv: CSV, framedLogin: true });
+  try {
+    process.env.SEDIF_LOGIN_URL = framed.loginUrl;
+    const config = normalizeConfig({
+      email: 'user@example.com',
+      password: 'secret',
+      history_url: framed.historyUrl,
+    });
+    assert.equal(await downloadHistoryCsv(config), CSV);
+  } finally {
+    process.env.SEDIF_LOGIN_URL = portal.loginUrl;
+    await framed.close();
+  }
+});
+
+test('a failed step leaves a screenshot and says what the page was', { skip }, async () => {
+  // A portal that answers but shows no form at all: the error must carry the
+  // page's identity, not just "not found".
+  const blank = await startFakePortal({ csv: CSV });
+  try {
+    process.env.SEDIF_LOGIN_URL = `${blank.loginUrl}nope/`;
+    const config = normalizeConfig({ email: 'user@example.com', password: 'secret' });
+
+    await assert.rejects(
+      () => downloadHistoryCsv(config, { deadlineMs: 60_000 }),
+      (err) => {
+        assert.equal(err.code, 'LOGIN_FORM_NOT_FOUND');
+        // The diagnostics summary is appended to the message the user reads.
+        assert.match(err.message, /page ".*" at http/);
+        assert.match(err.message, /0 password field\(s\)/);
+        return true;
+      },
+    );
+
+    const { readdir } = await import('node:fs/promises');
+    const { DIAGNOSTICS_DIR } = await import('../src/storage.js');
+    const files = await readdir(DIAGNOSTICS_DIR());
+    assert.ok(
+      files.some((f) => f.endsWith('.png')) && files.some((f) => f.endsWith('.html')),
+      `expected a screenshot and an HTML dump, got ${files.join(', ')}`,
+    );
+  } finally {
+    process.env.SEDIF_LOGIN_URL = portal.loginUrl;
+    await blank.close();
+  }
 });
 
 test('reports a refused login instead of timing out silently', { skip }, async () => {

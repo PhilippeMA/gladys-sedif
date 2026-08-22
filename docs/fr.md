@@ -182,6 +182,23 @@ conteneur chez vous, et utilisés uniquement pour se connecter à
   explication ; si vous voyez malgré tout ce message générique, c'est que le
   conteneur ne répond plus du tout — regardez ses logs.
 
+## Quand le mode automatique échoue
+
+À chaque échec d'une étape du navigateur, l'intégration **photographie la page**
+avant de la fermer. Le message d'erreur affiché dans Gladys porte déjà
+l'essentiel : l'URL, le titre de la page, le nombre de champs de connexion
+trouvés et le début du texte visible. C'est souvent suffisant pour comprendre
+(page d'attente, bandeau cookies, compte bloqué, site en maintenance).
+
+Pour aller plus loin, une capture d'écran et le HTML complet sont écrits dans
+`/data/diagnostics` du conteneur, les six derniers échecs étant conservés :
+
+```bash
+docker cp <nom-du-conteneur>:/data/diagnostics ./diagnostics-sedif
+```
+
+Ouvrez le `.png` : vous verrez exactement ce que le navigateur voyait.
+
 ## Charge machine
 
 Ouvrir un navigateur coûte cher : comptez quelques centaines de Mo de mémoire
