@@ -38,7 +38,7 @@ tracer les courbes et les utiliser dans des scènes) :
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | **Origine des relevés**            | Automatique (par défaut) ou fichier CSV déposé. Voir ci-dessous.                                                   |
 | **Adresse e-mail**                 | L'identifiant de votre espace client. Inutile en mode fichier déposé.                                              |
-| **Mot de passe**                   | Le mot de passe du même compte. Chiffré par Gladys, jamais renvoyé à l'interface.                                  |
+| **Mot de passe**                   | Le mot de passe du même compte. Stocké en clair par Gladys — voir « Vos identifiants ».                            |
 | **Numéro de contrat**              | À renseigner uniquement si votre compte porte plusieurs contrats. Il figure sur votre facture.                     |
 | **Intervalle de rafraîchissement** | Par défaut 6 heures. Le compteur n'étant relevé qu'une fois par jour, il n'y a rien à gagner à descendre plus bas. |
 | **Historique à importer**          | Nombre de jours repris lors du premier import. 30 jours par défaut, jusqu'à 3 ans.                                 |
@@ -135,10 +135,25 @@ passe en orange et le message d'erreur nomme l'étape qui a échoué. Le mode
 
 ## Vos identifiants
 
-Vos identifiants ne quittent jamais votre installation Gladys. Ils sont stockés
-chiffrés par Gladys, transmis à l'intégration qui tourne dans son propre
-conteneur chez vous, et utilisés uniquement pour se connecter à
-`connexion.leaudiledefrance.fr`. Aucun service tiers n'est contacté.
+Vos identifiants ne quittent jamais votre installation : ils sont transmis à
+l'intégration, qui tourne dans son propre conteneur chez vous, et servent
+uniquement à se connecter à `connexion.leaudiledefrance.fr`. Aucun service tiers
+n'est contacté.
+
+En revanche, sachez comment ils sont conservés : **Gladys stocke la
+configuration des intégrations en clair dans sa base de données**. Le mot de
+passe n'est pas chiffré. Le champ est déclaré « secret », ce qui garantit
+seulement qu'il n'est jamais renvoyé vers l'interface web — pas qu'il est
+protégé sur le disque.
+
+Concrètement, quiconque peut lire la base de données de Gladys, ou une
+sauvegarde de celle-ci, peut lire ce mot de passe. D'où deux précautions :
+
+- traitez vos sauvegardes Gladys comme un document contenant un mot de passe ;
+- n'utilisez pas ici un mot de passe que vous réutilisez ailleurs.
+
+Si cela vous gêne, le mode **« Fichier CSV déposé »** ne demande aucun
+identifiant.
 
 ## En cas de problème
 

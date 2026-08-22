@@ -10,9 +10,7 @@
   "docker_image": "ghcr.io/philippema/gladys-sedif:1.0.1",
   "gladys_version": ">=4.85.0",
   "cover_image": "https://raw.githubusercontent.com/PhilippeMA/gladys-sedif/main/cover.jpg",
-  "transports": [
-    "cloud"
-  ],
+  "transports": ["cloud"],
   "config_schema": [
     {
       "key": "intro",
@@ -98,8 +96,8 @@
         "fr": "Mot de passe"
       },
       "description": {
-        "en": "The password of your leaudiledefrance.fr account. Stored encrypted by Gladys, never sent back to the frontend, and only used by the automatic source.",
-        "fr": "Le mot de passe de votre compte leaudiledefrance.fr. Stocké chiffré par Gladys, jamais renvoyé à l'interface, et utilisé uniquement par la source automatique."
+        "en": "The password of your leaudiledefrance.fr account, used only by the automatic source. Gladys stores integration settings in CLEAR TEXT in its database: the secret field only means the value is never sent back to the web interface, not that it is protected on disk. Prefer a password you do not reuse elsewhere.",
+        "fr": "Le mot de passe de votre compte leaudiledefrance.fr, utilisé uniquement par la source automatique. Gladys stocke la configuration des intégrations EN CLAIR dans sa base : le champ secret garantit seulement que la valeur n'est jamais renvoyée à l'interface web, pas qu'elle est protégée sur le disque. Préférez un mot de passe que vous ne réutilisez pas ailleurs."
       },
       "required": false
     },

@@ -37,7 +37,7 @@ chart them and use them in scenes:
 | ------------------------------ | ------------------------------------------------------------------------------------------- |
 | **Where readings come from**   | Automatic (default) or a dropped CSV file. See below.                                       |
 | **Email address**              | The login of your customer account. Not needed in dropped-file mode.                        |
-| **Password**                   | The password of that same account. Encrypted by Gladys, never sent back to the frontend.    |
+| **Password**                   | The password of that same account. Stored in clear text by Gladys — see "Your credentials". |
 | **Contract number**            | Only needed if your account holds several contracts. It is printed on your bill.            |
 | **Refresh interval**           | 6 hours by default. The meter is only read once a day, so a shorter interval gains nothing. |
 | **History to import**          | How many days the first import goes back. 30 days by default, up to 3 years.                |
@@ -132,10 +132,24 @@ the step that failed. The dropped-file mode remains available in the meantime.
 
 ## Your credentials
 
-Your credentials never leave your Gladys installation. They are stored encrypted
-by Gladys, passed to the integration running in its own container on your own
-hardware, and used only to sign in to `connexion.leaudiledefrance.fr`. No third
-party service is contacted.
+Your credentials never leave your installation: they are passed to the
+integration, which runs in its own container on your own hardware, and are used
+only to sign in to `connexion.leaudiledefrance.fr`. No third party service is
+contacted.
+
+Do know how they are kept, though: **Gladys stores integration settings in clear
+text in its database**. The password is not encrypted. The field is declared
+`secret`, which only guarantees that the value is never sent back to the web
+interface — not that it is protected on disk.
+
+In practice, anyone who can read the Gladys database, or a backup of it, can
+read that password. Hence two precautions:
+
+- treat your Gladys backups as a document containing a password;
+- do not use a password here that you reuse elsewhere.
+
+If that bothers you, the **dropped CSV file** mode asks for no credentials at
+all.
 
 ## Troubleshooting
 
