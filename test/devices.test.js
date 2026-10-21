@@ -258,3 +258,63 @@ test('test_connection asks for the credentials instead of failing', async () => 
   const message = await waterMeter.actions.test_connection(gladys, { config: normalizeConfig({}) });
   assert.match(message.en, /Fill in the email address/);
 });
+
+test('a day the operator revises is published again with the new value', async () => {
+  // The reported bug, end to end: a day is published the night it appears,
+  // the operator corrects it afterwards, and the chart kept the first value
+  // until a manual re-import. Dates are relative to today so the readings sit
+  // inside the revisit window, which is what the fix is about.
+  const day = (offset) => new Date(Date.now() - offset * 86_400_000).toISOString().slice(0, 10);
+
+  const provisional = [
+    'Date;Index;Consommation;Methode',
+    `${day(2)} 00:00:00;1234000;120;Mesuré`,
+    `${day(1)} 00:00:00;1234150;150;Mesuré`,
+  ].join('\n');
+
+  const first = createFakeGladys();
+  await waterMeter.refresh(first, CONFIG, fromCsv(provisional));
+  assert.equal(
+    first.published.filter((p) => p.featureExternalId.endsWith(':daily-volume')).length,
+    2,
+  );
+
+  // Same day, corrected by the operator: 150 L was wrong, it was 95 L.
+  const corrected = provisional.replace(
+    `${day(1)} 00:00:00;1234150;150`,
+    `${day(1)} 00:00:00;1234095;95`,
+  );
+
+  const second = createFakeGladys();
+  await waterMeter.refresh(second, CONFIG, fromCsv(corrected));
+
+  const daily = second.published.filter((p) => p.featureExternalId.endsWith(':daily-volume'));
+  assert.ok(
+    daily.some((p) => p.state === 95),
+    'the corrected value must be published, not swallowed by the cursor',
+  );
+
+  const index = second.published.filter((p) => p.featureExternalId.endsWith(':index'));
+  assert.ok(
+    index.some((p) => p.state === 1234.095),
+    'the corrected index must be published too',
+  );
+});
+
+test('the cursor never moves backwards when old days are re-checked', async () => {
+  const day = (offset) => new Date(Date.now() - offset * 86_400_000).toISOString().slice(0, 10);
+  const csv = [
+    'Date;Index;Consommation;Methode',
+    `${day(3)} 00:00:00;1000;10;Mesuré`,
+    `${day(1)} 00:00:00;1020;20;Mesuré`,
+  ].join('\n');
+
+  const gladys = createFakeGladys();
+  await waterMeter.refresh(gladys, CONFIG, fromCsv(csv));
+  assert.equal(await readCursor(contractKey(CONFIG)), day(1));
+
+  // A later refresh re-publishes the window; the cursor must stay on the
+  // furthest day, not drift back to the oldest one re-sent.
+  await waterMeter.refresh(createFakeGladys(), CONFIG, fromCsv(csv));
+  assert.equal(await readCursor(contractKey(CONFIG)), day(1));
+});

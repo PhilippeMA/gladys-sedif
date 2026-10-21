@@ -123,12 +123,15 @@ test('selectNewReadings keeps the estimated rows when the user asked for them', 
   assert.equal(selected.length, 4);
 });
 
-test('selectNewReadings publishes nothing twice', () => {
+test('selectNewReadings does not replay days the operator has finished with', () => {
+  // Days already published AND outside the revisit window are left alone; the
+  // ones inside it come back on purpose (see the revision tests below).
   const readings = parseHistoryCsv(SAMPLE);
   const selected = selectNewReadings(readings, {
     historyDays: 365,
     includeEstimated: false,
     since: '2026-08-06',
+    revisitDays: 0,
     now: new Date('2026-08-09T06:00:00Z'),
   });
   assert.deepEqual(
@@ -184,4 +187,73 @@ test('latestReading returns null when the export holds only estimates', () => {
 test('the meter index is published in cubic meters', () => {
   assert.equal(litersToCubicMeters(1234414), 1234.414);
   assert.equal(litersToCubicMeters(0), 0);
+});
+
+test('re-publishes the recent past, because the operator rewrites it', () => {
+  // The bug this guards against: a day appears hours after it ends, gets
+  // published, and is revised by the operator afterwards. A cursor that only
+  // moves forward keeps the first version for ever, and only a manual
+  // re-import repaired the chart.
+  const readings = parseHistoryCsv(SAMPLE);
+  const selected = selectNewReadings(readings, {
+    historyDays: 365,
+    includeEstimated: false,
+    since: '2026-08-08', // everything already published
+    revisitDays: 14,
+    now: new Date('2026-08-09T06:00:00Z'),
+  });
+
+  assert.deepEqual(
+    selected.map((r) => r.date),
+    ['2026-08-05', '2026-08-06', '2026-08-08'],
+    'every measured day inside the window comes back, cursor or not',
+  );
+});
+
+test('leaves alone the days the operator will not touch again', () => {
+  const readings = parseHistoryCsv(SAMPLE);
+  const selected = selectNewReadings(readings, {
+    historyDays: 365,
+    includeEstimated: false,
+    since: '2026-08-08',
+    revisitDays: 14,
+    // Two months later: the whole sample is out of the revisit window.
+    now: new Date('2026-10-09T06:00:00Z'),
+  });
+  assert.deepEqual(selected, []);
+});
+
+test('an estimated day revised into a measurement is picked back up', () => {
+  // Day 07 is estimated, so it is skipped while day 08 is published and the
+  // cursor jumps over it. Once the operator publishes the real measurement,
+  // the revisit window is what brings the missing day back.
+  const corrected = parseHistoryCsv(SAMPLE.replace('1234300;150;Estimé', '1234300;150;Mesuré'));
+  const selected = selectNewReadings(corrected, {
+    historyDays: 365,
+    includeEstimated: false,
+    since: '2026-08-08',
+    revisitDays: 14,
+    now: new Date('2026-08-09T06:00:00Z'),
+  });
+  assert.ok(
+    selected.some((r) => r.date === '2026-08-07'),
+    'the day skipped as an estimate must come back once measured',
+  );
+});
+
+test('a brand new day is still published from outside the window', () => {
+  // The window is an addition, not a replacement: a day newer than the cursor
+  // is published whatever its age — a Gladys off for six weeks must catch up.
+  const readings = parseHistoryCsv(SAMPLE);
+  const selected = selectNewReadings(readings, {
+    historyDays: 365,
+    includeEstimated: false,
+    since: '2026-08-05',
+    revisitDays: 1,
+    now: new Date('2026-10-09T06:00:00Z'),
+  });
+  assert.deepEqual(
+    selected.map((r) => r.date),
+    ['2026-08-06', '2026-08-08'],
+  );
 });

@@ -33,15 +33,15 @@ chart them and use them in scenes:
 
 ## Configuration
 
-| Field                          | Purpose                                                                                     |
-| ------------------------------ | ------------------------------------------------------------------------------------------- |
-| **Where readings come from**   | Automatic (default) or a dropped CSV file. See below.                                       |
-| **Email address**              | The login of your customer account. Not needed in dropped-file mode.                        |
-| **Password**                   | The password of that same account. Stored in clear text by Gladys — see "Your credentials". |
-| **Contract number**            | Only needed if your account holds several contracts. It is printed on your bill.            |
-| **Refresh interval**           | 6 hours by default. The meter is only read once a day, so a shorter interval gains nothing. |
-| **History to import**          | How many days the first import goes back. 30 days by default, up to 3 years.                |
-| **Include estimated readings** | Off by default. See "Measured and estimated readings".                                      |
+| Field                          | Purpose                                                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| **Where readings come from**   | Automatic (default) or a dropped CSV file. See below.                                                  |
+| **Email address**              | The login of your customer account. Not needed in dropped-file mode.                                   |
+| **Password**                   | The password of that same account. Stored in clear text by Gladys — see "Your credentials".            |
+| **Contract (position)**        | Leave empty unless the account holds several contracts. It takes a position (1 = first), not a number. |
+| **Refresh interval**           | 6 hours by default. The meter is only read once a day, so a shorter interval gains nothing.            |
+| **History to import**          | How many days the first import goes back. 30 days by default, up to 3 years.                           |
+| **Include estimated readings** | Off by default. See "Measured and estimated readings".                                                 |
 
 Once the fields are filled in, use the **Test the connection** button: it really
 signs in and reports the latest available reading. It is the fastest way to
@@ -100,6 +100,13 @@ Every reading is published in Gladys **at its actual date**, not at the date of
 the import: your chart is correctly dated, including the history picked up on
 the very first run.
 
+**The operator rewrites the recent past.** A day shows up a few hours after it
+ends, still provisional, and is corrected later — sometimes from an estimate
+down to a measurement. So the integration re-checks the **last fourteen days**
+on every refresh and re-publishes those whose value changed. Gladys recognises a
+day it already stored and updates its value instead of adding a second one: your
+chart follows the corrections on its own, with no manual re-import.
+
 The integration paces itself rather than using the Gladys polling mechanism,
 which never goes slower than once a minute — far too fast for a daily value. A
 first refresh runs about a minute after startup and after every configuration
@@ -157,9 +164,10 @@ all.
   account can also be temporarily locked after several failed attempts.
 - **"No meter attached to contract"**: your meter is most likely not remotely
   read, so the portal has no daily history to give.
-- **"Contract X is not among the active ones"**: the message lists the contracts
-  it found; copy one of them, or empty the field to use the account's only
-  contract.
+- **A message about choosing the contract**: the portal identifies contracts by
+  tokens it regenerates on every request, so the number printed on your bill
+  cannot be recognised here. The field takes a **position** instead: `1` for the
+  first contract, `2` for the second. With a single contract, leave it empty.
 - **An error naming an `LTN...` class**: the operator changed its application.
   That is the case that needs an update of the integration; switch to "Dropped
   CSV file" in the meantime.

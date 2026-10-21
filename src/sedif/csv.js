@@ -90,7 +90,31 @@ export function parseHistoryCsv(csv) {
 }
 
 /**
- * Keep the readings that still have to be published.
+ * Keep the readings that have to be published.
+ *
+ * TWO kinds of day qualify, and the second one is the whole point:
+ *
+ *   - everything NEWER than the cursor — the days Gladys has never seen;
+ *   - everything inside the REVISIT WINDOW, cursor or not.
+ *
+ * The window exists because the operator rewrites the recent past. A day shows
+ * up hours after it ends, provisional; it is revised later, sometimes from an
+ * estimate to a lower measured value. An import that only ever moves forward
+ * publishes the first version it sees and never looks again, so the chart keeps
+ * a value the portal itself has since corrected — which is exactly what a
+ * manual re-import was fixing.
+ *
+ * Re-publishing is safe and is what repairs it: Gladys matches a historical
+ * state on (feature, created_at), skips it when the value is identical and
+ * UPDATES it in place when it differs (see device.saveHistoricalState in the
+ * core). It never duplicates the point. An earlier version of this file claimed
+ * the opposite, and that wrong assumption is what made the cursor a one-way
+ * ratchet.
+ *
+ * The window also closes a second hole: an estimated day sitting between two
+ * measured ones is skipped, yet the cursor jumps over it. Without a second look
+ * it would stay missing from the chart forever, even once the operator
+ * publishes the real measurement.
  *
  * @param {Reading[]} readings parsed history, oldest first
  * @param {object} options
@@ -98,16 +122,20 @@ export function parseHistoryCsv(csv) {
  * @param {boolean} options.includeEstimated keep the estimated readings
  * @param {string|null} options.since   last published day (`YYYY-MM-DD`), or
  *                                      null when nothing was ever published
+ * @param {number} [options.revisitDays] how many recent days to re-check
  * @param {Date} [options.now]          injectable clock, for the tests
  * @returns {Reading[]}
  */
-export function selectNewReadings(readings, { historyDays, includeEstimated, since, now }) {
+export function selectNewReadings(
+  readings,
+  { historyDays, includeEstimated, since, revisitDays = DEFAULT_REVISIT_DAYS, now },
+) {
+  const today = now ?? new Date();
   // The history window bounds the FIRST import only. Once a cursor exists,
   // everything the portal published after it is imported — a Gladys that was
   // off for six weeks must not end up with a permanent hole in its chart.
-  const today = now ?? new Date();
-  const floor =
-    since === null ? toIsoDay(new Date(today.getTime() - historyDays * 86_400_000)) : since;
+  const historyFloor = toIsoDay(new Date(today.getTime() - historyDays * MS_PER_DAY));
+  const revisitFloor = toIsoDay(new Date(today.getTime() - revisitDays * MS_PER_DAY));
 
   return readings.filter((reading) => {
     // Estimated readings are not measurements: the operator fills the gap
@@ -115,11 +143,22 @@ export function selectNewReadings(readings, { historyDays, includeEstimated, sin
     if (reading.estimated && !includeEstimated) {
       return false;
     }
-    // `since` is the last day already in Gladys: publishing it again would
-    // duplicate the point in the history.
-    return since === null ? reading.date >= floor : reading.date > since;
+    if (since === null) {
+      return reading.date >= historyFloor;
+    }
+    return reading.date > since || reading.date >= revisitFloor;
   });
 }
+
+/**
+ * Days whose value the operator may still rewrite, and which every refresh
+ * therefore re-publishes. Two weeks is well past the one-to-two-day
+ * publication delay, and costs 28 states per refresh against a core limit of
+ * 300 per minute.
+ */
+export const DEFAULT_REVISIT_DAYS = 14;
+
+const MS_PER_DAY = 86_400_000;
 
 /**
  * The last measured reading of a history — what "the meter reads X right now"

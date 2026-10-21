@@ -39,7 +39,7 @@ tracer les courbes et les utiliser dans des scènes) :
 | **Origine des relevés**            | Automatique (par défaut) ou fichier CSV déposé. Voir ci-dessous.                                                   |
 | **Adresse e-mail**                 | L'identifiant de votre espace client. Inutile en mode fichier déposé.                                              |
 | **Mot de passe**                   | Le mot de passe du même compte. Stocké en clair par Gladys — voir « Vos identifiants ».                            |
-| **Numéro de contrat**              | À renseigner uniquement si votre compte porte plusieurs contrats. Il figure sur votre facture.                     |
+| **Contrat (rang)**                 | À laisser vide, sauf plusieurs contrats sur le compte. On indique un rang (1 = le premier), pas un numéro.         |
 | **Intervalle de rafraîchissement** | Par défaut 6 heures. Le compteur n'étant relevé qu'une fois par jour, il n'y a rien à gagner à descendre plus bas. |
 | **Historique à importer**          | Nombre de jours repris lors du premier import. 30 jours par défaut, jusqu'à 3 ans.                                 |
 | **Inclure les relevés estimés**    | Désactivé par défaut. Voir « Relevés mesurés et estimés ».                                                         |
@@ -100,6 +100,14 @@ C'est une limite du service, pas de l'intégration.
 Chaque relevé est publié dans Gladys **à sa date réelle**, pas à la date de
 l'import : votre courbe est donc correctement datée, y compris pour l'historique
 repris au premier démarrage.
+
+**L'exploitant réécrit le passé récent.** Une journée apparaît quelques heures
+après sa fin, encore provisoire, puis elle est corrigée — parfois d'une
+estimation vers une mesure plus basse. L'intégration revérifie donc les
+**quatorze derniers jours** à chaque relevé et republie ceux dont la valeur a
+changé. Gladys reconnaît une journée déjà enregistrée et met sa valeur à jour au
+lieu d'en ajouter une seconde : votre courbe suit les corrections toute seule,
+sans réimport manuel.
 
 L'intégration gère elle-même son rythme, sans passer par le mécanisme de
 scrutation de Gladys (qui ne descend pas en dessous d'un rafraîchissement par
@@ -162,9 +170,11 @@ identifiant.
 - **« Aucun compteur rattaché au contrat »** : votre compteur n'est
   probablement pas télérelevé, et l'espace client n'a pas d'historique
   quotidien à donner.
-- **« Le contrat X ne fait pas partie des contrats actifs »** : le message liste
-  les contrats trouvés ; recopiez-en un, ou videz le champ pour prendre le seul
-  contrat du compte.
+- **Un message sur le choix du contrat** : l'espace client identifie les
+  contrats par des jetons qu'il régénère à chaque requête — impossible d'y
+  reconnaître le numéro figurant sur votre facture. Le champ attend donc un
+  **rang** : `1` pour le premier contrat, `2` pour le deuxième. Avec un seul
+  contrat, laissez-le vide.
 - **Une erreur nommant une classe `LTN...`** : l'exploitant a changé son
   application. C'est le cas qui demande une mise à jour de l'intégration ;
   basculez sur « Fichier CSV déposé » en attendant.

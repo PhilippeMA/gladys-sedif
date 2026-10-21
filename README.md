@@ -117,12 +117,36 @@ Each poll downloads the whole exported period and publishes only what Gladys
 does not have yet:
 
 - an **import cursor** on `/data` (the one writable mount) records the last
-  published day, so a restart does not duplicate the chart;
+  published day, so a restart does not re-import three years of history;
 - the cursor advances **batch by batch**, so a failure halfway through an import
   does not replay the days that already made it;
 - batches are capped at 100 states, the SDK limit;
 - **estimated** readings are skipped by default: they can make the index go
-  backwards once the real measurement lands.
+  backwards once the real measurement lands;
+- the last **14 days are re-published on every refresh**, cursor or not.
+
+That last point is not belt and braces, it is a bug fix. The operator rewrites
+the recent past: a day appears hours after it ends, provisional, and is revised
+later. A cursor that only moves forward publishes the first version and never
+looks again, so the chart keeps a value the portal has since corrected — until
+someone re-imports by hand. Re-publishing is safe and is what repairs it:
+Gladys matches a historical state on `(feature, created_at)`, skips it when the
+value is identical and **updates it in place** when it differs
+(`device.saveHistoricalState` in the core). It never duplicates the point.
+
+The window also closes a second hole: an estimated day between two measured
+ones is skipped while the cursor jumps over it, and would stay missing for ever
+without a second look.
+
+## Contract ids are per-request tokens
+
+Worth knowing before touching `resolveContract`. What
+`listCurrentUserActiveContrats` returns are **not** contract numbers: they are
+opaque tokens regenerated on every single call — the same account answers
+`9W89dqWJvCxLdcNx…` one minute and `UB8FcM3iB2WxOT9e…` the next. They are valid
+only for the next call of the same session: never store one, compare it across
+sessions, or show it to a user as something to copy. The `contract` setting is
+therefore a **position** (1 = first), not the number printed on the bill.
 
 ## Run it locally
 

@@ -109,8 +109,8 @@
         "fr": "Numéro de contrat"
       },
       "description": {
-        "en": "Only needed if your account holds several contracts. Shown on your bill and in the portal. Leave empty to use the only contract of the account.",
-        "fr": "Utile uniquement si votre compte porte plusieurs contrats. Il figure sur votre facture et dans l'espace client. Laissez vide si votre compte n'a qu'un seul contrat."
+        "en": "Leave empty unless your account holds SEVERAL contracts. The portal identifies them by tokens it regenerates on every request, so a contract cannot be named here: enter its position instead (1 for the first). With a single contract this field is ignored.",
+        "fr": "Laissez vide, sauf si votre compte porte PLUSIEURS contrats. L'espace client les identifie par des jetons regénérés à chaque requête, un contrat ne peut donc pas être nommé ici : indiquez son rang (1 pour le premier). Avec un seul contrat, ce champ est ignoré."
       },
       "placeholder": {
         "en": "1234567",

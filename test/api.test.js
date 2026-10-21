@@ -181,20 +181,40 @@ test('a wrong password is reported, not silently swallowed', async () => {
   );
 });
 
-test('picks the configured contract, and says so when it does not exist', async () => {
+test('a multi-contract account selects by position, not by a token', async () => {
+  // The ids the portal returns are per-request tokens, regenerated on every
+  // call — the same account answers a different string each time. They cannot
+  // be matched against the contract number a user reads off their bill, so the
+  // setting picks a position instead.
   await withPortal(
-    { records: RECORDS, contracts: ['CTR-001', 'CTR-999'] },
+    { records: RECORDS, contracts: ['TOKEN-A', 'TOKEN-B'] },
     async (portal, fetchConsumption) => {
-      const chosen = await fetchConsumption({ ...CONFIG, contract: 'CTR-999' });
-      assert.equal(chosen.contract, 'CTR-999');
+      assert.equal((await fetchConsumption({ ...CONFIG, contract: '2' })).contract, 'TOKEN-B');
+      assert.equal((await fetchConsumption({ ...CONFIG, contract: '1' })).contract, 'TOKEN-A');
+      // Nothing configured: the first one, and the logs say how to choose.
+      assert.equal((await fetchConsumption(CONFIG)).contract, 'TOKEN-A');
 
       await assert.rejects(
-        () => fetchConsumption({ ...CONFIG, contract: 'CTR-404' }),
+        () => fetchConsumption({ ...CONFIG, contract: '7654321' }),
         (err) => {
           assert.equal(err.code, 'CONTRACT_NOT_FOUND');
-          assert.match(err.message, /CTR-001, CTR-999/);
+          assert.match(err.message, /use a number between 1 and 2/);
           return true;
         },
+      );
+    },
+  );
+});
+
+test('a single-contract account ignores the setting entirely', async () => {
+  // Most accounts. Whatever the user typed in the field, there is one contract
+  // and it is the right one — failing there would be gratuitous.
+  await withPortal(
+    { records: RECORDS, contracts: ['TOKEN-ONLY'] },
+    async (_p, fetchConsumption) => {
+      assert.equal(
+        (await fetchConsumption({ ...CONFIG, contract: '1234567' })).contract,
+        'TOKEN-ONLY',
       );
     },
   );

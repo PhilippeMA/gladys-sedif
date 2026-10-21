@@ -175,35 +175,53 @@ async function followFrontdoor(session, loginResponse) {
   }
 }
 
-/** The contract to read: the configured one, or the only active one. */
+/**
+ * The contract to read: the configured one, or the only active one.
+ *
+ * A warning for anyone extending this. What the API hands back are NOT contract
+ * numbers: they are opaque, per-request tokens that change on every single
+ * call. The same account answers
+ * `9W89dqWJvCxLdcNx...` one minute and `UB8FcM3iB2WxOT9e...` the next. They can
+ * be passed straight back to the next call of the same session, and nothing
+ * more — never stored, compared across sessions, or shown to a user as
+ * something to copy.
+ *
+ * So the configured `contract`, which a user reads off their bill, cannot be
+ * matched against them. It is used as a position instead (see below), and an
+ * account with a single contract — the overwhelming majority — never needs it.
+ */
 async function resolveContract(session, config) {
   const contracts = await apexAction(session, APEX.CONTRACTS);
   const ids = Array.isArray(contracts) ? contracts.map(String) : [];
 
-  if (config.contract) {
-    // The configured value may be the contract number rather than the id the
-    // API uses, so accept a partial match before giving up.
-    const match = ids.find((id) => id === config.contract || id.includes(config.contract));
-    if (match) {
-      return match;
-    }
-    if (ids.length === 0) {
-      throw new PortalError('NO_CONTRACT', 'The account has no active contract.');
-    }
-    throw new PortalError(
-      'CONTRACT_NOT_FOUND',
-      `Contract "${config.contract}" is not among the active ones (${ids.join(', ')}).`,
-    );
-  }
-
   if (ids.length === 0) {
     throw new PortalError('NO_CONTRACT', 'The account has no active contract.');
   }
-  if (ids.length > 1) {
-    logger.info(
-      `Account holds ${ids.length} contracts, using ${ids[0]} — set one in the configuration to choose`,
+  if (ids.length === 1) {
+    return ids[0];
+  }
+
+  // Several contracts. The configured value selects one by POSITION ("1" is
+  // the first), because matching it on the bill number is not possible against
+  // tokens that are regenerated every call.
+  const position = Number.parseInt(config.contract, 10);
+  if (Number.isInteger(position) && position >= 1 && position <= ids.length) {
+    logger.info(`Account holds ${ids.length} contracts, using number ${position}`);
+    return ids[position - 1];
+  }
+
+  if (config.contract) {
+    throw new PortalError(
+      'CONTRACT_NOT_FOUND',
+      `The account holds ${ids.length} contracts; "${config.contract}" selects none of them. ` +
+        `The portal identifies them by tokens that change on every request, so a contract is ` +
+        `chosen by position here: use a number between 1 and ${ids.length}.`,
     );
   }
+
+  logger.info(
+    `Account holds ${ids.length} contracts, using the first — set a number (1-${ids.length}) in the configuration to choose another`,
+  );
   return ids[0];
 }
 

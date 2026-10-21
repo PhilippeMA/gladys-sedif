@@ -224,11 +224,18 @@ async function importHistory(gladys, config, deps = {}) {
   });
 
   if (toPublish.length === 0) {
-    logger.info(`Nothing new to publish (last imported day: ${since ?? 'none'})`);
+    logger.info(`Nothing to publish (last imported day: ${since ?? 'none'})`);
     return 0;
   }
 
-  logger.info(`Publishing ${toPublish.length} days, from ${toPublish[0].date}`);
+  // Worth separating in the logs: brand new days are the normal flow, while
+  // the re-checked ones are there to catch the operator's own corrections.
+  const fresh = since === null ? toPublish : toPublish.filter((r) => r.date > since);
+  const revisited = toPublish.length - fresh.length;
+  logger.info(
+    `Publishing ${toPublish.length} days, from ${toPublish[0].date}` +
+      (revisited > 0 ? ` (${fresh.length} new, ${revisited} re-checked for corrections)` : ''),
+  );
 
   for (let i = 0; i < toPublish.length; i += READINGS_PER_BATCH) {
     const batch = toPublish.slice(i, i + READINGS_PER_BATCH);
@@ -248,7 +255,12 @@ async function importHistory(gladys, config, deps = {}) {
     );
     // Move the cursor batch by batch: a failure halfway through leaves the
     // already published days behind us instead of replaying them next time.
-    await writeCursor(key, batch[batch.length - 1].date);
+    // Readings are sorted, so the last of the batch is the furthest day — and
+    // the cursor only ever moves forward, whatever the revisit window re-sent.
+    const furthest = batch[batch.length - 1].date;
+    if (since === null || furthest > since) {
+      await writeCursor(key, furthest);
+    }
   }
 
   return toPublish.length;
