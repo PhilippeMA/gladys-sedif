@@ -6,8 +6,8 @@
     "en": "Track your SEDIF water consumption (L'Eau d'Île-de-France / Veolia) in Gladys.",
     "fr": "Suivez votre consommation d'eau SEDIF (L'Eau d'Île-de-France / Veolia) dans Gladys."
   },
-  "version": "1.0.1",
-  "docker_image": "ghcr.io/philippema/gladys-sedif:1.0.1",
+  "version": "1.0.2",
+  "docker_image": "ghcr.io/philippema/gladys-sedif:1.0.2",
   "gladys_version": ">=4.86.0",
   "cover_image": "https://raw.githubusercontent.com/PhilippeMA/gladys-sedif/main/cover.jpg",
   "categories": ["energy", "environment"],
