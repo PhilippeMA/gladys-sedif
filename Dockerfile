@@ -35,7 +35,12 @@ COPY gladys-assistant-integration.json ./
 
 ENV NODE_ENV=production
 
-# The only writable location allowed at runtime.
+# The only writable location allowed at runtime. Docker creates a new volume
+# with the owner of the image's /data, so it must belong to `node`, and the
+# chown must come BEFORE the VOLUME line: changes made to /data after it are
+# discarded. Without this, /data is root-owned, the integration cannot write
+# there, and the import cursor silently never survives a restart.
+RUN mkdir -p /data && chown node:node /data
 VOLUME ["/data"]
 
 # Run as an unprivileged user (already present in the node image).
