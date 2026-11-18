@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-18
+
 ### Changed
 
 - Updated to version 0.16.1 of the Gladys integration SDK, and realigned the
@@ -69,5 +71,6 @@ the notes of the version's GitHub Release.
 - An import cursor on the `/data` volume, batched publication, and estimated
   readings skipped by default.
 
-[Unreleased]: https://github.com/PhilippeMA/gladys-sedif/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/PhilippeMA/gladys-sedif/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/PhilippeMA/gladys-sedif/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/PhilippeMA/gladys-sedif/compare/v1.0.1...v1.0.2
