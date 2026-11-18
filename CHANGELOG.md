@@ -10,6 +10,21 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Changed
+
+- Updated to version 0.16.1 of the Gladys integration SDK, and realigned the
+  repository with the current official template. Nothing in 0.16 changes how
+  this integration behaves: the polling contract it relaxes is one this
+  integration does not use (a water meter read once a day cannot live on the
+  core's one-minute clock, so the refresh is scheduled here), and
+  `DEVICE_POLL_FREQUENCIES` still stops at one minute.
+- The tests now publish through the SDK's own fake Gladys, which validates a
+  payload the way the host API does: the `ext:sedif:` prefix, known categories,
+  types and units, an accepted `poll_frequency`, and the columns Gladys stores
+  NOT NULL on a feature. The device's two features already declared all of
+  them, so nothing in the integration changed — but a `400` on discovery or a
+  `422` when adding the device is now a failing test instead of a bug report.
+
 ## [1.0.2] - 2026-10-22
 
 ### Changed

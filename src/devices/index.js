@@ -9,7 +9,14 @@
 // Every blueprint exposes:
 //   - key                                : short identifier, used in the logs
 //   - deviceExternalId(gladys, config)   : the device external_id, for dispatch
-//   - buildDevice(gladys, config)        : the discovery payload sent to Gladys
+//   - buildDevice(gladys, config)        : the discovery payload sent to Gladys.
+//     Every feature carries `name`, `min`, `max`, `read_only` and
+//     `has_feedback`, even where they mean nothing (0 / 0 for a text or image
+//     feature): Gladys stores those columns NOT NULL without a default. A core
+//     that does not check them on publication lists the device in the
+//     Discovery tab anyway, then answers HTTP 422 ("t_device_feature.min
+//     cannot be null") when the user clicks Add. test/devices.test.js checks
+//     them on every feature.
 //   - refresh(gladys, config)  (optional): read the source and publish states
 //   - transport(gladys, config)(optional): effective transport, shown as a badge
 //   - actions                  (optional): manifest action handlers, keyed by

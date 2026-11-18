@@ -180,6 +180,15 @@ stand-in portal served over real HTTPS with a self-signed certificate
 exercises the login handshake, the frontdoor session, the CSRF echo, the Apex
 unwrapping, the units, and the custom-CA code path.
 
+Everything published goes through the **SDK's fake Gladys**
+([`test/helpers/fakeGladys.js`](./test/helpers/fakeGladys.js) wraps it), which
+validates a payload the way the host API does: the `ext:sedif:` prefix, known
+categories, types and units, a `poll_frequency` among the six the core accepts,
+the columns Gladys stores NOT NULL on a feature (`name`, `min`, `max`,
+`read_only`, `has_feedback`). Those are the mistakes a hand-written stub waves
+through and the user then meets as a `400` on discovery or a `422` when adding
+the device.
+
 What no test can cover: whether the Apex class names still match the live
 portal. Only a run against the real site tells you that — the **Tester la
 connexion** button in the Gladys Configuration screen is there for exactly that.

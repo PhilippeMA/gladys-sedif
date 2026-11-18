@@ -80,6 +80,38 @@ test('the device declares NO poll_frequency', () => {
   assert.ok(!('poll_frequency' in device), 'the key must be absent, not undefined');
 });
 
+test('Gladys accepts the discovery payload', async () => {
+  // The SDK fake checks the payload the way the host API does: the
+  // `ext:sedif:` prefix on the device and on every feature, a known category,
+  // type and unit, a `poll_frequency` among DEVICE_POLL_FREQUENCIES, and since
+  // SDK 0.16.1 the columns Gladys needs to create a feature. A refusal is a
+  // 400 for the WHOLE list, so the device would simply never appear in the
+  // Discovery tab — which is how the first release of this integration failed.
+  const gladys = createFakeGladys();
+  await gladys.publishDiscoveredDevices(buildDiscoveredDevices(gladys, CONFIG));
+  assert.equal(gladys.sdk.fake.discoveredDevices.length, 1);
+});
+
+test('every feature carries the columns Gladys needs to create it', () => {
+  // Gladys stores name, min, max, read_only and has_feedback NOT NULL in
+  // t_device_feature, without a default. A core that does not check them on
+  // publication accepts the device in the Discovery tab, then answers HTTP 422
+  // ("t_device_feature.min cannot be null") when the user clicks Add. The
+  // previous test has the fake refuse it; this one names the faulty feature,
+  // and also checks that min does not exceed max.
+  for (const device of buildDiscoveredDevices(createFakeGladys(), CONFIG)) {
+    for (const feature of device.features) {
+      const where = `${device.name} / ${feature.name ?? feature.external_id}`;
+      assert.ok(typeof feature.name === 'string' && feature.name.length > 0, `${where}: name`);
+      assert.ok(Number.isFinite(feature.min), `${where}: min must be a finite number`);
+      assert.ok(Number.isFinite(feature.max), `${where}: max must be a finite number`);
+      assert.ok(feature.min <= feature.max, `${where}: min must not exceed max`);
+      assert.equal(typeof feature.read_only, 'boolean', `${where}: read_only`);
+      assert.equal(typeof feature.has_feedback, 'boolean', `${where}: has_feedback`);
+    }
+  }
+});
+
 test('refreshAllDevices drives every blueprint that can refresh', async () => {
   const gladys = createFakeGladys();
   const published = await refreshAllDevices(gladys, CONFIG, fromCsv(CSV));
