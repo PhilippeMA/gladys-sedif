@@ -1,6 +1,6 @@
 {
   "name": "gladys-sedif",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Gladys Assistant integration tracking SEDIF (L'Eau d'Ile-de-France) water consumption.",
   "type": "module",

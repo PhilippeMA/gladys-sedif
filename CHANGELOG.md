@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-20
+
 ### Fixed
 
 - Every refresh failed with `UNABLE_TO_VERIFY_LEAF_SIGNATURE` after the portal
@@ -96,6 +98,7 @@ the notes of the version's GitHub Release.
 - An import cursor on the `/data` volume, batched publication, and estimated
   readings skipped by default.
 
-[Unreleased]: https://github.com/PhilippeMA/gladys-sedif/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/PhilippeMA/gladys-sedif/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/PhilippeMA/gladys-sedif/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/PhilippeMA/gladys-sedif/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/PhilippeMA/gladys-sedif/compare/v1.0.1...v1.0.2
