@@ -31,7 +31,8 @@ import {
   buildTransportEntries,
   refreshAllDevices,
 } from './src/devices/index.js';
-import { ensureStateDir } from './src/storage.js';
+import { learnCertificates } from './src/sedif/aura.js';
+import { ensureStateDir, readLearnedChain } from './src/storage.js';
 
 const gladys = new GladysIntegration();
 
@@ -191,6 +192,9 @@ gladys.handleShutdown((signal) => {
 // --- Startup -----------------------------------------------------------------
 logger.info('Starting the SEDIF integration...');
 await ensureStateDir();
+// The certificate that repaired the portal's chain on an earlier run, if any:
+// loading it here spares the first request a failure and a download.
+learnCertificates(await readLearnedChain());
 gladys.connect().catch((err) => {
   logger.error('Initial connection failed', err);
   process.exit(1);

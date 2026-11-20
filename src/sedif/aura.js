@@ -21,11 +21,23 @@
 //
 // TLS NOTE — this is not paranoia, it is the reason a plain `fetch()` fails:
 // the portal serves an INCOMPLETE certificate chain. It sends its leaf without
-// the Gandi intermediate that signs it. Browsers repair that themselves by
-// fetching the missing certificate (AIA); Node does not, and reports
+// the intermediate that signs it. Browsers repair that themselves by fetching
+// the missing certificate (AIA); Node does not, and reports
 // UNABLE_TO_VERIFY_LEAF_SIGNATURE on a perfectly healthy connection. So we
 // hand Node the missing intermediate alongside its own root store — which
 // keeps full verification on, rather than turning it off.
+//
+// There are three sources for that intermediate, tried in this order:
+//
+//   1. certs/gandi_intermediate.pem, the one the site used when this
+//      integration was written. Free, offline, and right as long as the site
+//      does not rotate its certificate;
+//   2. the certificate fetched from the URL the leaf itself names, the way a
+//      browser does it (src/sedif/chain.js), kept on /data afterwards. This is
+//      what survives a rotation to another CA — which is exactly what broke
+//      version 1.0.2 in production;
+//   3. SEDIF_EXTRA_CA_FILE, for a company proxy's own CA, and for the
+//      stand-in portal of the tests.
 // -----------------------------------------------------------------------------
 
 import { readFileSync } from 'node:fs';
@@ -34,6 +46,8 @@ import path from 'node:path';
 import tls from 'node:tls';
 import { fileURLToPath } from 'node:url';
 import { createLogger } from '@gladysassistant/integration-sdk';
+import { readLearnedChain, writeLearnedChain } from '../storage.js';
+import { fetchMissingIntermediates } from './chain.js';
 import { PortalError } from './errors.js';
 
 const logger = createLogger({ name: 'aura' });
@@ -68,13 +82,45 @@ const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Node's own roots PLUS the intermediate the portal forgets to send, PLUS
- * anything `SEDIF_EXTRA_CA_FILE` points at (a company proxy's CA, or the
- * stand-in portal in the tests).
+ * anything learned by repairing the chain at runtime, PLUS anything
+ * `SEDIF_EXTRA_CA_FILE` points at (a company proxy's CA, or the stand-in
+ * portal in the tests).
  *
- * Memoized on that variable so the common case costs nothing and a test can
- * still change it.
+ * Memoized on the variable and on the learned certificates, so the common case
+ * costs nothing and both a test and a repair can still change it.
  */
 let caCache = { key: undefined, bundle: null };
+
+/** Certificates fetched at runtime, newest repair last. */
+let learnedChain = [];
+
+/**
+ * Hand the bundle certificates learned elsewhere: the ones persisted on /data
+ * at startup, or the ones a repair just fetched.
+ * @param {string[]} pems - PEM blocks to add; already-known ones are ignored.
+ * @returns {string[]} the certificates that were actually new
+ */
+export function learnCertificates(pems) {
+  const added = pems.filter((pem) => pem && !learnedChain.includes(pem));
+  if (added.length > 0) {
+    learnedChain = [...learnedChain, ...added];
+    caCache = { key: undefined, bundle: null };
+  }
+  return added;
+}
+
+/** The certificates learned so far, for persistence. */
+export function learnedCertificates() {
+  return [...learnedChain];
+}
+
+/** Test seam: forget what was learned, and allow a repair again right away. */
+export function resetChainState() {
+  learnedChain = [];
+  caCache = { key: undefined, bundle: null };
+  lastRepairAt = 0;
+  repairInFlight = null;
+}
 
 export function caBundle() {
   const extraPath = process.env.SEDIF_EXTRA_CA_FILE || '';
@@ -82,7 +128,7 @@ export function caBundle() {
     return caCache.bundle;
   }
 
-  const bundle = [...tls.rootCertificates];
+  const bundle = [...tls.rootCertificates, ...learnedChain];
   const here = path.dirname(fileURLToPath(import.meta.url));
 
   for (const [file, required] of [
@@ -187,7 +233,77 @@ export class AuraSession {
  *
  * @returns {Promise<{ status: number, body: string, headers: object }>}
  */
-export function httpRequest(session, { method, url, body, headers = {}, redirect = 'follow' }) {
+export async function httpRequest(session, options) {
+  try {
+    return await sendRequest(session, options);
+  } catch (err) {
+    if (err.code !== 'PORTAL_TLS_FAILED') {
+      throw err;
+    }
+    // The chain did not verify. Fetch what the leaf says is missing, the way a
+    // browser would, and give the request exactly one more go.
+    const learned = await repairChain(new URL(options.url));
+    if (learned === 0) {
+      throw err;
+    }
+    return sendRequest(session, options);
+  }
+}
+
+/**
+ * Complete the certificate chain from the URL the leaf names, remember the
+ * result on /data, and report how many certificates were added.
+ *
+ * Attempted at most once per cooldown window: a portal that is broken for
+ * another reason must not turn every request into a certificate download, but
+ * a rotation that happens while the integration runs still gets repaired
+ * without waiting for a restart.
+ *
+ * @returns {Promise<number>} number of certificates newly added to the bundle
+ */
+async function repairChain(target) {
+  if (repairInFlight) {
+    return repairInFlight;
+  }
+  if (Date.now() - lastRepairAt < REPAIR_COOLDOWN_MS) {
+    return 0;
+  }
+
+  repairInFlight = (async () => {
+    try {
+      // A previous run may already have fetched it. Cheaper than downloading,
+      // and it also covers a bundle that was never loaded at startup.
+      const persisted = learnCertificates(await readLearnedChain());
+      if (persisted.length > 0) {
+        logger.info(`Reusing ${persisted.length} certificate(s) fetched on an earlier run`);
+        return persisted.length;
+      }
+
+      const fetched = await fetchMissingIntermediates({
+        hostname: target.hostname,
+        port: target.port || 443,
+        trustedCas: caBundle(),
+      });
+      const added = learnCertificates(fetched);
+      if (added.length > 0) {
+        await writeLearnedChain(learnedCertificates());
+      }
+      return added.length;
+    } finally {
+      lastRepairAt = Date.now();
+      repairInFlight = null;
+    }
+  })();
+
+  return repairInFlight;
+}
+
+let repairInFlight = null;
+let lastRepairAt = 0;
+const REPAIR_COOLDOWN_MS = 60 * 60 * 1000;
+
+/** One HTTPS request, without the chain-repair retry around it. */
+function sendRequest(session, { method, url, body, headers = {}, redirect = 'follow' }) {
   const target = new URL(url);
 
   return new Promise((resolve, reject) => {
@@ -271,10 +387,16 @@ function translateTransportError(err, target) {
       );
     case 'UNABLE_TO_VERIFY_LEAF_SIGNATURE':
     case 'SELF_SIGNED_CERT_IN_CHAIN':
+    case 'UNABLE_TO_GET_ISSUER_CERT':
+    case 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY':
+    case 'CERT_UNTRUSTED':
       return new PortalError(
         'PORTAL_TLS_FAILED',
         `The portal's certificate chain could not be verified (${err.code}). ` +
-          'It serves an incomplete chain; the intermediate shipped in certs/ should repair it.',
+          'It serves an incomplete chain, and the missing certificate could not be ' +
+          'fetched from the address the portal names. If this machine reaches the ' +
+          'internet through a proxy that re-signs HTTPS, point SEDIF_EXTRA_CA_FILE ' +
+          "at that proxy's certificate.",
       );
     default:
       return new PortalError(

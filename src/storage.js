@@ -2,16 +2,18 @@
 // Small persistent state, in the only writable place of the sandbox.
 //
 // The Gladys sandbox mounts the container rootfs READ-ONLY and gives the
-// integration a single writable volume, `/data`. Two things need it:
+// integration a single writable volume, `/data`. Three things need it:
 //
 //   1. the import cursor — the last day already published to Gladys. Without
 //      it, every restart would re-push the whole history and duplicate every
 //      point of the consumption chart;
-//   2. a scratch directory for Chromium, which refuses to start when it cannot
-//      write its profile.
+//   2. the drop folder of the CSV source, where the user puts the export;
+//   3. the intermediate certificate fetched to repair the portal's incomplete
+//      chain (see src/sedif/chain.js), so a restart does not download it again.
 //
 // Everything degrades gracefully: if `/data` is not writable, the integration
-// still works, it just re-publishes what it already published.
+// still works — it just re-publishes what it already published, and fetches
+// the certificate again at every start.
 // -----------------------------------------------------------------------------
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -25,14 +27,11 @@ export const STATE_DIR = process.env.GLADYS_SEDIF_STATE_DIR || '/data';
 
 const CURSOR_FILE = () => path.join(STATE_DIR, 'cursor.json');
 
-/** Scratch directory for the browser profile and temporary files. */
-export const BROWSER_PROFILE_DIR = () => path.join(STATE_DIR, 'chromium');
-
 /** Where the user drops the CSV exported by hand (source = "file"). */
 export const IMPORT_DIR = () => path.join(STATE_DIR, 'import');
 
-/** Screenshots and HTML dumps of the pages a browser session failed on. */
-export const DIAGNOSTICS_DIR = () => path.join(STATE_DIR, 'diagnostics');
+/** Intermediate certificates fetched to complete the portal's chain. */
+const CHAIN_FILE = () => path.join(STATE_DIR, 'chain.pem');
 
 /**
  * Create the writable directories. Called once at startup so a permission
@@ -40,19 +39,42 @@ export const DIAGNOSTICS_DIR = () => path.join(STATE_DIR, 'diagnostics');
  */
 export async function ensureStateDir() {
   try {
-    await mkdir(BROWSER_PROFILE_DIR(), { recursive: true });
     // Always created, whatever the configured source: a folder that exists is
     // what tells a user where the file is supposed to go.
     await mkdir(IMPORT_DIR(), { recursive: true });
-    await mkdir(DIAGNOSTICS_DIR(), { recursive: true });
-    // Playwright creates a throw-away browser profile under TMPDIR at every
-    // launch. The default (/tmp) belongs to the read-only rootfs, so point it
-    // at the volume — otherwise Chromium never starts.
-    process.env.TMPDIR = BROWSER_PROFILE_DIR();
     return true;
   } catch (err) {
     logger.warn(`Cannot write in ${STATE_DIR}: ${err.message}`);
     return false;
+  }
+}
+
+/**
+ * The intermediate certificates learned on an earlier run, or an empty array.
+ * @returns {Promise<string[]>} one PEM block per certificate
+ */
+export async function readLearnedChain() {
+  try {
+    const content = await readFile(CHAIN_FILE(), 'utf8');
+    return content
+      .split(/(?=-----BEGIN CERTIFICATE-----)/)
+      .map((block) => block.trim())
+      .filter((block) => block.startsWith('-----BEGIN CERTIFICATE-----'));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Remember the certificates that repaired the chain. A failure here is logged,
+ * never fatal: the connection already works, it will just be repaired again
+ * after a restart.
+ */
+export async function writeLearnedChain(pems) {
+  try {
+    await writeFile(CHAIN_FILE(), `${pems.map((pem) => pem.trim()).join('\n')}\n`, 'utf8');
+  } catch (err) {
+    logger.warn(`Could not persist the fetched certificate: ${err.message}`);
   }
 }
 

@@ -71,12 +71,21 @@ _Units._ `CONSOMMATION` is in **cubic meters** (0.150 = 150 L) and
 `VALEUR_INDEX` is the index, also in cubic meters — where the CSV export gives
 both in **litres**. Getting it backwards puts a household meter at a million m³.
 
-_TLS._ The portal serves an **incomplete certificate chain**: it omits the Gandi
-intermediate that signs its leaf. Browsers repair that themselves (AIA); Node
+_TLS._ The portal serves an **incomplete certificate chain**: it sends its leaf
+without the intermediate that signs it. Browsers repair that themselves by
+fetching the missing certificate from the address the leaf names (AIA); Node
 does not, and reports `UNABLE_TO_VERIFY_LEAF_SIGNATURE` on a perfectly healthy
-connection. [`certs/gandi_intermediate.pem`](./certs) is handed to Node
-alongside its own root store — verification stays fully on. `SEDIF_EXTRA_CA_FILE`
-adds another CA if a proxy needs it.
+connection. So [`src/sedif/chain.js`](./src/sedif/chain.js) does what the
+browser does, and the certificate is kept on `/data` afterwards.
+
+Pinning the intermediate instead is what broke version 1.0.2 in production: it
+shipped the Gandi certificate in use at the time, the site moved to another CA
+in November 2026, and every refresh died until a new release. The pinned file is
+still tried first — it costs nothing and needs no network — but it is no longer
+what the fix rests on. Verification stays **fully on** throughout: a fetched
+certificate is only ever offered as a possible intermediate, and still has to
+lead to a root in Node's own store. `SEDIF_EXTRA_CA_FILE` adds another CA when a
+proxy re-signs HTTPS.
 
 **Credit.** The protocol was reverse-engineered by TimoPtr in
 [pyeauidf](https://github.com/TimoPtr/pyeauidf) / [ha_eauidf](https://github.com/TimoPtr/ha_eauidf)
@@ -102,10 +111,12 @@ far better failure than a selector timing out on a rendered page.
 │  │  ├─ api.js                      #   the four portal exchanges
 │  │  ├─ file.js                     #   the dropped-CSV source
 │  │  ├─ csv.js                      #   pure parser + reading selection
+│  │  ├─ chain.js                    #   fetches the missing intermediate (AIA)
 │  │  └─ errors.js                   #   PortalError
 │  ├─ storage.js                     # import cursor + /data layout
 │  └─ config.js                      # config defaults + normalization
-├─ certs/gandi_intermediate.pem      # the chain link the portal forgets to send
+├─ certs/gandi_intermediate.pem      # offline fast path; the chain is repaired
+│                                    #   at runtime when this one no longer fits
 ├─ docs/{en,fr}.md                   # user documentation, re-hosted by Gladys
 ├─ gladys-assistant-integration.json # manifest
 └─ Dockerfile                        # node:24-alpine, multi-arch

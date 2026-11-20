@@ -10,6 +10,31 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Fixed
+
+- Every refresh failed with `UNABLE_TO_VERIFY_LEAF_SIGNATURE` after the portal
+  rotated its TLS certificate to another certificate authority in November 2026. The portal sends its leaf certificate without the intermediate that
+  signs it, and version 1.0.2 repaired that with one certificate pinned in
+  `certs/`: the day the issuer changed, the pinned file no longer fitted and
+  the integration stopped dead, with nothing the user could do about it.
+
+  The missing certificate is now fetched from the address the leaf itself
+  names, which is what a browser does (`src/sedif/chain.js`), and kept on
+  `/data` so a restart does not download it again. The pinned certificate is
+  still tried first, and `SEDIF_EXTRA_CA_FILE` still overrides everything for a
+  proxy that re-signs HTTPS. This survives the next rotation without a release.
+
+  Verification stays fully on: a fetched certificate is accepted only if it
+  really issued the certificate below it, and the connection still has to lead
+  to a root in Node's own store, so a hostile answer at that address changes
+  nothing.
+
+### Removed
+
+- The `/data/chromium` and `/data/diagnostics` directories, and the `TMPDIR`
+  override that pointed at them. They were left over from the browser era and
+  were created at every start for nothing.
+
 ## [1.1.0] - 2026-11-18
 
 ### Changed

@@ -28,8 +28,10 @@ RUN npm ci --omit=dev || npm install --omit=dev
 # Then the integration code.
 COPY index.js ./
 COPY src ./src
-# The intermediate certificate the portal forgets to send. Without it Node
-# rejects a perfectly good connection with UNABLE_TO_VERIFY_LEAF_SIGNATURE.
+# An intermediate certificate the portal does not send. It is only the offline
+# fast path: when it no longer matches the site's chain, src/sedif/chain.js
+# fetches the right one the way a browser does. Without either, Node rejects a
+# perfectly good connection with UNABLE_TO_VERIFY_LEAF_SIGNATURE.
 COPY certs ./certs
 COPY gladys-assistant-integration.json ./
 
